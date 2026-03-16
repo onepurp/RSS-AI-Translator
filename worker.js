@@ -203,11 +203,19 @@ function parseRSS(xml) {
 }
 
 function generateRSS(items, config) {
+  // 1. Detect if the language is Right-to-Left (RTL)
+  const rtlLangs =["Arabic", "Hebrew", "Persian", "Urdu"];
+  const isRTL = rtlLangs.includes(config.lang);
+
+  // 2. Create HTML attributes to force RTL if needed
+  const dirHtml = isRTL ? '<div dir="rtl" style="text-align: right; font-family: sans-serif;">' : '<div>';
+  const closeDiv = '</div>';
+
   const xmlItems = items.map(i => `
     <item>
-      <!-- FIX: Safely escape CDATA and standard XML tags -->
       <title><![CDATA[${escapeCDATA(i.title)}]]></title>
-      <description><![CDATA[${escapeCDATA(i.description)}]]></description>
+      <!-- 3. Wrap the description in the RTL div -->
+      <description><![CDATA[${dirHtml}${escapeCDATA(i.description)}${closeDiv}]]></description>
       <link>${escapeXML(i.link)}</link>
       <pubDate>${escapeXML(i.pubDate)}</pubDate>
       <guid isPermaLink="false">${escapeXML(i.id)}</guid>
