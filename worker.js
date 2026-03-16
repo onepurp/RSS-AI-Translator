@@ -1,8 +1,34 @@
-const FEEDS = [
+// ==========================================
+// CONFIGURATION & UTILITIES
+// ==========================================
+
+const FEEDS =[
   { url: "https://example.com/original-feed-0.xml", lang: "Arabic", name: "feed0" },
   { url: "https://example.com/original-feed-1.xml", lang: "French", name: "feed1" }
-
 ];
+
+// Safely escape CDATA closing tags to prevent XML corruption
+const escapeCDATA = (str) => (str || "").replace(/]]>/g, "]]]]><![CDATA[>");
+
+// Escape standard XML entities (Ampersand MUST be first)
+const escapeXML = (str) => (str || "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&apos;");
+
+// Decode XML entities during parsing so the LLM translates clean text
+const decodeXML = (str) => (str || "")
+  .replace(/&lt;/gi, "<")
+  .replace(/&gt;/gi, ">")
+  .replace(/&quot;/gi, '"')
+  .replace(/&apos;/gi, "'")
+  .replace(/&amp;/gi, "&");
+
+// ==========================================
+// WORKER ENTRY POINTS
+// ==========================================
 
 export default {
   async scheduled(event, env, ctx) {
@@ -12,8 +38,13 @@ export default {
 
   async fetch(request, env) {
     const url = new URL(request.url);
-    const feedName = url.pathname.split("/").pop();
-    if (!feedName || feedName === "") return new Response(`Available: ${FEEDS.map(f => f.name).join(", ")}`);
+    
+    const feedName = url.pathname.split("/").filter(Boolean).pop();
+    
+    if (!feedName) return new Response(`Available: ${FEEDS.map(f => f.name).join(", ")}`);
+    
+    const feedExists = FEEDS.some(f => f.name === feedName);
+    if (!feedExists) return new Response("Feed not found", { status: 404 });
 
     const cached = await env.RSS_CACHE.get(`feed:${feedName}`);
     if (!cached) return new Response("Feed processing. Refresh in 1 min.", { status: 404 });
@@ -33,10 +64,19 @@ export default {
   }
 };
 
+// ==========================================
+// CORE LOGIC
+// ==========================================
+
 async function processFeed(config, env) {
   const res = await fetch(config.url);
+  
+  if (!res.ok) throw new Error(`Failed to fetch feed: ${res.status} ${res.statusText}`);
+  
   const xml = await res.text();
   const items = parseRSS(xml);
+  
+  if (items.length === 0) throw new Error("No items found in feed. Aborting to preserve cache.");
 
   const mapKey = `map:${config.name}`;
   const translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
@@ -47,9 +87,16 @@ async function processFeed(config, env) {
   if (toTranslate.length > 0) {
     console.log(`🌐 Translating ${toTranslate.length} items for ${config.name}...`);
     const translated = await translateItems(toTranslate, config.lang, env);
+    
     if (translated && translated.length > 0) {
       translated.forEach(it => { translatedMap[it.id] = it; });
-      await env.FEED_METADATA.put(mapKey, JSON.stringify(translatedMap), { expirationTtl: 2592000 });
+      
+      const prunedMap = {};
+      items.forEach(it => {
+        if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id];
+      });
+      
+      await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
     }
   }
 
@@ -76,9 +123,8 @@ async function translateItems(items, lang, env) {
         "Content-Type": "application/json" 
       },
       body: JSON.stringify({
-
         model: "llama-3.3-70b-versatile", 
-        messages: [
+        messages:[
           { 
             role: "system", 
             content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. Return ONLY valid JSON in this format: {"items": [{"id": "...", "t": "...", "d": "..."}]}` 
@@ -94,6 +140,11 @@ async function translateItems(items, lang, env) {
       })
     });
 
+    if (!res.ok) {
+      console.error(`❌ Groq API Error (${res.status}):`, await res.text());
+      return[];
+    }
+
     const data = await res.json();
     
     if (!data.choices || !data.choices[0]) {
@@ -102,31 +153,51 @@ async function translateItems(items, lang, env) {
     }
 
     const content = data.choices[0].message.content;
-    const parsed = JSON.parse(content).items;
+    let parsed;
+    
+    try {
+      parsed = JSON.parse(content).items ||[];
+      if (!Array.isArray(parsed)) throw new Error("Parsed items is not an array");
+    } catch (err) {
+      console.error("❌ Failed to parse LLM response:", content);
+      return[];
+    }
     
     console.log(`✅ Successfully translated ${parsed.length} items.`);
 
     return parsed.map(p => {
       const orig = items.find(i => i.id === p.id);
-      return { ...orig, title: p.t, description: p.d };
-    });
+      if (!orig) return null;
+      return { ...orig, title: p.t || orig.title, description: p.d || orig.description };
+    }).filter(Boolean); // Remove any nulls from hallucinated IDs
   } catch (e) {
     console.error("❌ Translation function crashed:", e.message);
-    return [];
+    return[];
   }
 }
 
+// ==========================================
+// RSS PARSING & GENERATION
+// ==========================================
+
 function parseRSS(xml) {
-  const items = [];
-  const matches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
+  const items =[];
+  const matches = xml.matchAll(/<item[^>]*>([\s\S]*?)<\/item>/gi);
+  
   for (const m of matches) {
     const i = m[1];
     const get = (tag) => {
       const match = i.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, "i"));
-      return match ? match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim() : "";
+      return match ? decodeXML(match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1").trim()) : "";
     };
+    
     const link = get("link");
-    items.push({ id: get("guid") || link, title: get("title"), description: get("description"), link, pubDate: get("pubDate") });
+    const id = get("guid") || link;
+    const description = get("content:encoded") || get("description");
+    
+    if (id) {
+      items.push({ id, title: get("title"), description, link, pubDate: get("pubDate") });
+    }
   }
   return items;
 }
@@ -134,11 +205,19 @@ function parseRSS(xml) {
 function generateRSS(items, config) {
   const xmlItems = items.map(i => `
     <item>
-      <title><![CDATA[${i.title}]]></title>
-      <description><![CDATA[${i.description}]]></description>
-      <link>${i.link}</link>
-      <pubDate>${i.pubDate}</pubDate>
-      <guid isPermaLink="false">${i.id}</guid>
+      <!-- FIX: Safely escape CDATA and standard XML tags -->
+      <title><![CDATA[${escapeCDATA(i.title)}]]></title>
+      <description><![CDATA[${escapeCDATA(i.description)}]]></description>
+      <link>${escapeXML(i.link)}</link>
+      <pubDate>${escapeXML(i.pubDate)}</pubDate>
+      <guid isPermaLink="false">${escapeXML(i.id)}</guid>
     </item>`).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${config.name} (${config.lang})</title>${xmlItems}</channel></rss>`;
+    
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>${escapeXML(config.name)} (${escapeXML(config.lang)})</title>
+    ${xmlItems}
+  </channel>
+</rss>`;
 }
