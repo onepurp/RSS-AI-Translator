@@ -18,7 +18,6 @@ const decodeXML = (str) => (str || "").replace(/&lt;/gi, "<").replace(/&gt;/gi, 
 export default {
   async scheduled(event, env, ctx) {
     console.log("📅 Cron job started...");
-    // Pass ctx down so we can use ctx.waitUntil for non-blocking background tasks (like saving token usage)
     ctx.waitUntil(this.processAll(env, ctx));
   },
 
@@ -27,15 +26,34 @@ export default {
     const pathParts = url.pathname.split("/").filter(Boolean);
     const endpoint = pathParts.join("/");
 
-    if (endpoint === "admin/usage") {
-      const date = new Date();
-      const monthKey = `usage:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const currentUsage = await env.FEED_METADATA.get(monthKey, "json") || { prompt: 0, completion: 0, total: 0 };
-      return new Response(JSON.stringify({ month: monthKey, tokens: currentUsage }, null, 2), { 
-        headers: { "Content-Type": "application/json" } 
-      });
+    if (endpoint.startsWith("admin/")) {
+      // Check for secret in URL (?secret=xyz) OR Authorization header (Bearer xyz)
+      const urlSecret = url.searchParams.get("secret");
+      const headerSecret = request.headers.get("Authorization")?.replace("Bearer ", "");
+      const providedSecret = urlSecret || headerSecret;
+
+      // If no secret is configured in Cloudflare, or the provided secret doesn't match, block access
+      if (!env.ADMIN_SECRET || providedSecret !== env.ADMIN_SECRET) {
+        return new Response(JSON.stringify({ error: "Unauthorized. Invalid or missing secret." }), { 
+          status: 401, 
+          headers: { "Content-Type": "application/json" } 
+        });
+      }
+
+      // Admin Route: Check Token Usage
+      if (endpoint === "admin/usage") {
+        const date = new Date();
+        const monthKey = `usage:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const currentUsage = await env.FEED_METADATA.get(monthKey, "json") || { prompt: 0, completion: 0, total: 0 };
+        return new Response(JSON.stringify({ month: monthKey, tokens: currentUsage }, null, 2), { 
+          headers: { "Content-Type": "application/json" } 
+        });
+      }
+
+      return new Response("Admin endpoint not found", { status: 404 });
     }
 
+    // Public Routes: Serve RSS Feeds
     const feedName = pathParts.pop();
     if (!feedName) return new Response(`Available: ${FEEDS.map(f => f.name).join(", ")}`);
     
@@ -121,7 +139,7 @@ async function translateItems(items, lang, env, ctx) {
     });
 
     const MAX_RETRIES = 3;
-    let delay = 1000; // Start with 1 second delay
+    let delay = 1000; 
     let data = null;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -136,10 +154,9 @@ async function translateItems(items, lang, env, ctx) {
 
       if (res.ok) {
         data = await res.json();
-        break; // Success! Exit the retry loop.
+        break; 
       }
 
-      // If Rate Limited (429) or Server Error (5xx), we retry
       if (res.status === 429 || res.status >= 500) {
         console.warn(`⚠️ Groq API Error (${res.status}). Attempt ${attempt}/${MAX_RETRIES} failed.`);
         if (attempt === MAX_RETRIES) {
@@ -148,9 +165,8 @@ async function translateItems(items, lang, env, ctx) {
         }
         console.log(`⏳ Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Double the delay for the next attempt (1s -> 2s -> 4s)
+        delay *= 2; 
       } else {
-        // If 400 (Bad Request) or 401 (Unauthorized), retrying won't help. Abort immediately.
         console.error(`❌ Fatal Groq API Error (${res.status}):`, await res.text());
         return[];
       }
@@ -163,7 +179,6 @@ async function translateItems(items, lang, env, ctx) {
 
     if (data.usage) {
       if (ctx) {
-        // Use waitUntil so saving to KV doesn't slow down the translation process
         ctx.waitUntil(trackUsage(env, data.usage));
       } else {
         await trackUsage(env, data.usage);
@@ -198,7 +213,6 @@ async function trackUsage(env, usageData) {
   try {
     const { prompt_tokens, completion_tokens, total_tokens } = usageData;
     const date = new Date();
-    // Creates a key like "usage:2026-03"
     const monthKey = `usage:${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     
     let currentUsage = await env.FEED_METADATA.get(monthKey, "json") || { prompt: 0, completion: 0, total: 0 };
@@ -241,7 +255,7 @@ function parseRSS(xml) {
 }
 
 function generateRSS(items, config) {
-  const rtlLangs = ["Arabic", "Hebrew", "Persian", "Urdu"];
+  const rtlLangs =["Arabic", "Hebrew", "Persian", "Urdu"];
   const isRTL = rtlLangs.includes(config.lang);
   const dirHtml = isRTL ? '<div dir="rtl" style="text-align: right; font-family: sans-serif;">' : '<div>';
   const closeDiv = '</div>';
