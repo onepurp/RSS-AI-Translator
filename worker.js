@@ -68,11 +68,14 @@ const LLMService = {
     
     const cleanedItems = items.map(i => ({ id: i.id, t: i.title.substring(0, 300), d: i.description.substring(0, 1500) }));
     const payload = JSON.stringify({
-      model: "llama-3.3-70b-versatile", 
+      // model: "llama-3.3-70b-versatile", 
+      model: "openai/gpt-oss-120b", 
+
       messages:[
         { 
           role: "system", 
           content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
+          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
