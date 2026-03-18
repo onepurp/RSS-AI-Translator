@@ -70,7 +70,10 @@ const LLMService = {
     const payload = JSON.stringify({
       model: "llama-3.3-70b-versatile", 
       messages:[
-        { role: "system", content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` },
+        { 
+          role: "system", 
+          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
+        },
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
       response_format: { type: "json_object" },
@@ -93,7 +96,7 @@ const LLMService = {
         if (attempt === 3) return[];
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2; 
-      } else { return []; }
+      } else { return[]; }
     }
 
     if (!data?.choices?.[0]) return[];
@@ -123,7 +126,7 @@ const LLMService = {
 
 const RSSService = {
   parse(xml) {
-    const items = [];
+    const items =[];
     const matches = xml.matchAll(/<item[^>]*>([\s\S]*?)<\/item>/gi);
     for (const m of matches) {
       const i = m[1];
@@ -133,13 +136,18 @@ const RSSService = {
       };
       const link = get("link");
       const id = get("guid") || link;
-      if (id) items.push({ id, title: get("title"), description: get("content:encoded") || get("description"), link, pubDate: get("pubDate") });
+      const description = get("content:encoded") || get("description");
+      
+      const mediaMatches = i.match(/<(enclosure|media:[a-zA-Z0-9]+)[^>]*>(?:[\s\S]*?<\/\1>)?/gi);
+      const media = mediaMatches ? mediaMatches.join("\n") : "";
+
+      if (id) items.push({ id, title: get("title"), description, link, pubDate: get("pubDate"), media });
     }
     return items;
   },
 
   generate(items, config) {
-    const isRTL = ["Arabic", "Hebrew", "Persian", "Urdu"].includes(config.lang);
+    const isRTL =["Arabic", "Hebrew", "Persian", "Urdu"].includes(config.lang);
     const dirHtml = isRTL ? '<div dir="rtl" style="text-align: right; font-family: sans-serif;">' : '<div>';
     
     const xmlItems = items.map(i => `
@@ -149,9 +157,16 @@ const RSSService = {
         <link>${Utils.escapeXML(i.link)}</link>
         <pubDate>${Utils.escapeXML(i.pubDate)}</pubDate>
         <guid isPermaLink="false">${Utils.escapeXML(i.id)}</guid>
+        ${i.media || ""} <!-- FIX: Inject the original media tags back into the item -->
       </item>`).join("");
       
-    return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${Utils.escapeXML(config.name)} (${Utils.escapeXML(config.lang)})</title>${xmlItems}</channel></rss>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>${Utils.escapeXML(config.name)} (${Utils.escapeXML(config.lang)})</title>
+    ${xmlItems}
+  </channel>
+</rss>`;
   },
 
   async processFeed(config, env, ctx) {
@@ -166,28 +181,23 @@ const RSSService = {
       const mapKey = `map:${config.name}`;
       const translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
 
-      // Filter out already translated OR previously failed items (DLQ mechanism)
       const toTranslate = items.filter(it => !translatedMap[it.id]).slice(0, 2);
 
       if (toTranslate.length > 0) {
         const translated = await LLMService.translate(toTranslate, config.lang, env, ctx);
         
-        // Mark successes
         translated.forEach(it => { translatedMap[it.id] = it; });
         
-        // DLQ: Mark failures so they don't block the queue forever
         const translatedIds = new Set(translated.map(t => t.id));
         toTranslate.forEach(it => {
           if (!translatedIds.has(it.id)) translatedMap[it.id] = { failed: true, ...it };
         });
 
-        // Prune map to prevent memory leaks
         const prunedMap = {};
         items.forEach(it => { if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id]; });
         await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
       }
 
-      // Generate final feed (fallback to original if failed/untranslated)
       const finalItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
       const rss = this.generate(finalItems, config);
       await env.RSS_CACHE.put(`feed:${config.name}`, rss, { expirationTtl: 86400 });
