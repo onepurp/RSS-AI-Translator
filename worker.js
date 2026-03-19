@@ -310,7 +310,12 @@ export default {
     const feeds = await StorageService.getFeeds(env);
     const feedName = pathParts.pop();
     
-    if (!feedName) return new Response(`Available: ${feeds.map(f => f.name).join(", ") || "None"}`);
+    if (!feedName) {
+      return new Response(getPublicHTML(feeds, url.origin), { 
+        headers: { "Content-Type": "text/html; charset=utf-8" } 
+      });
+    }
+    
     if (!feeds.some(f => f.name === feedName)) return new Response("Feed not found", { status: 404 });
 
     const cached = await env.RSS_CACHE.get(`feed:${feedName}`);
@@ -321,86 +326,208 @@ export default {
 };
 
 // ==========================================
-// 6. SECURE UI GENERATOR
+// 6. SECURE UI GENERATOR (MODERN SPA)
 // ==========================================
 
 function getAdminHTML() {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="antialiased">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RSS AI Translator - Admin</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { brand: { 500: '#3B82F6', 600: '#2563EB', 700: '#1D4ED8' } }
+        }
+      }
+    }
+  </script>
   <style>
-    #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
-    .toast { padding: 12px 20px; border-radius: 8px; color: white; font-weight: 500; opacity: 0; transform: translateY(20px); animation: slideIn 0.3s forwards; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .toast.success { background-color: #10B981; }
-    .toast.error { background-color: #EF4444; }
-    @keyframes slideIn { to { opacity: 1; transform: translateY(0); } }
+    /* Custom Animations */
+    .toast-enter { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .toast-leave { animation: fadeOut 0.3s ease forwards; }
+    .modal-enter { animation: scaleIn 0.2s ease-out forwards; }
+    
+    @keyframes slideIn { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    
+    /* Scrollbar styling for dark mode */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .dark ::-webkit-scrollbar-thumb { background: #475569; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans antialiased p-6">
+<body class="bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-slate-50 min-h-screen transition-colors duration-200">
   
-  <!-- LOGIN SCREEN -->
-  <div id="login-screen" class="max-w-md mx-auto mt-20 bg-white p-8 rounded-xl shadow-sm border border-gray-200 hidden">
-    <h2 class="text-2xl font-bold mb-6 text-center">Admin Login</h2>
-    <form id="login-form" class="space-y-4">
-      <input type="password" id="secret-input" placeholder="Enter Admin Secret" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
-      <button type="submit" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Access Dashboard</button>
-    </form>
-  </div>
-
-  <!-- DASHBOARD SCREEN -->
-  <div id="dashboard-screen" class="max-w-5xl mx-auto space-y-8 hidden">
-    <header class="flex justify-between items-center border-b pb-4">
-      <h1 class="text-3xl font-bold text-gray-900">RSS AI Translator</h1>
-      <div class="flex gap-4 items-center">
-        <span class="bg-green-100 text-green-800 text-sm font-medium px-3 py-1 rounded-full">System Online</span>
-        <button onclick="logout()" class="text-sm text-gray-500 hover:text-red-500 underline">Logout</button>
-      </div>
-    </header>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 md:col-span-1">
-        <h2 class="text-lg font-semibold mb-4 text-gray-700">Groq Token Usage</h2>
-        <div id="usage-stats" class="space-y-3 text-sm"><p class="animate-pulse text-gray-400">Loading...</p></div>
-      </div>
-
-      <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 md:col-span-2">
-        <h2 class="text-lg font-semibold mb-4 text-gray-700">Managed Feeds</h2>
-        <ul id="feeds-list" class="space-y-3 mb-6"><p class="animate-pulse text-gray-400">Loading...</p></ul>
-        
-        <div class="border-t pt-6 mt-4">
-          <h3 class="text-md font-medium mb-3 text-gray-700">Add New Feed</h3>
-          <form id="add-feed-form" class="flex flex-col sm:flex-row gap-3">
-            <input type="text" id="feed-name" placeholder="URL Slug (e.g. tech)" class="border p-2 rounded-lg flex-1 outline-none" required>
-            <input type="url" id="feed-url" placeholder="Source RSS URL" class="border p-2 rounded-lg flex-[2] outline-none" required>
-            <input type="text" id="feed-lang" placeholder="Target Lang" class="border p-2 rounded-lg flex-1 outline-none" required>
-            <button type="submit" id="add-btn" class="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 transition font-medium">Add</button>
-          </form>
+  <!-- VIEW A: AUTHENTICATION -->
+  <div id="view-auth" class="hidden min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
+      <div class="flex justify-center mb-6">
+        <div class="bg-brand-100 dark:bg-brand-900/30 p-3 rounded-xl">
+          <svg class="w-8 h-8 text-brand-600 dark:text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </div>
       </div>
+      <h2 class="text-2xl font-bold mb-6 text-center">Admin Access</h2>
+      <form id="login-form" class="space-y-5">
+        <div>
+          <label for="secret-input" class="sr-only">Admin Secret</label>
+          <input type="password" id="secret-input" placeholder="Enter Admin Secret" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3.5 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all dark:text-white" required>
+        </div>
+        <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-xl font-medium transition-colors shadow-sm active:scale-[0.98]">Secure Login</button>
+      </form>
     </div>
   </div>
 
-  <div id="toast-container"></div>
+  <!-- VIEW B: DASHBOARD -->
+  <div id="view-dashboard" class="hidden max-w-5xl mx-auto p-6 space-y-8 pb-20">
+    
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-slate-800 pb-6 pt-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight">RSS AI Translator</h1>
+        <div class="flex items-center gap-2 mt-2">
+          <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+          <span class="text-sm font-medium text-emerald-600 dark:text-emerald-400">System Online & Active</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="theme-toggle" aria-label="Toggle Dark Mode" class="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shadow-sm">
+          <!-- Sun Icon (Hidden in Light Mode) -->
+          <svg id="icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          <!-- Moon Icon (Hidden in Dark Mode) -->
+          <svg id="icon-moon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        </button>
+        <button onclick="logout()" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">Logout</button>
+      </div>
+    </header>
+
+    <!-- Top Section: Metrics -->
+    <section>
+      <h2 class="text-lg font-semibold mb-4 text-gray-800 dark:text-slate-200">Groq Token Usage</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+          <p class="text-sm text-gray-500 dark:text-slate-400 font-medium mb-1">Prompt Tokens</p>
+          <p id="stat-prompt" class="text-2xl font-bold text-gray-900 dark:text-white skeleton-text">---</p>
+        </div>
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+          <p class="text-sm text-gray-500 dark:text-slate-400 font-medium mb-1">Completion Tokens</p>
+          <p id="stat-completion" class="text-2xl font-bold text-gray-900 dark:text-white skeleton-text">---</p>
+        </div>
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-brand-200 dark:border-brand-900/50 shadow-sm relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-16 h-16 bg-brand-100 dark:bg-brand-900/20 rounded-bl-full -mr-8 -mt-8"></div>
+          <p class="text-sm text-brand-600 dark:text-brand-400 font-medium mb-1">Total Tokens (This Month)</p>
+          <p id="stat-total" class="text-3xl font-bold text-brand-700 dark:text-brand-300 skeleton-text">---</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Section: Feeds -->
+    <section>
+      <div class="flex justify-between items-end mb-4">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-slate-200">Managed Feeds</h2>
+        <button onclick="openModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2 active:scale-[0.98]">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          Add Feed
+        </button>
+      </div>
+      
+      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+        <ul id="feeds-list" class="divide-y divide-gray-100 dark:divide-slate-700/50">
+          <!-- Skeleton Loaders -->
+          <li class="p-5 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/3"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
+          <li class="p-5 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/4"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <!-- OVERLAY: ADD FEED MODAL -->
+  <div id="modal-backdrop" class="hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div>
+  <div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden modal-enter">
+      <div class="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-700/50">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white">Provision New Feed</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+      <form id="add-feed-form" class="p-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">URL Slug (Name)</label>
+          <input type="text" id="feed-name" placeholder="e.g. tech-news" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
+          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">This will be the URL path: /tech-news</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Source RSS URL</label>
+          <input type="url" id="feed-url" placeholder="https://example.com/feed.xml" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Target Language</label>
+          <input type="text" id="feed-lang" placeholder="e.g. Arabic, French, Spanish" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
+        </div>
+        <div class="pt-4 flex gap-3 justify-end">
+          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+          <button type="submit" id="add-btn" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm active:scale-[0.98]">Save Feed</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container" aria-live="polite" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
 
   <script>
-    // XSS Prevention Utility
+    // --- UTILITIES ---
     const escapeHTML = (str) => str.replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
-
-    let secret = localStorage.getItem('admin_secret');
-    let currentFeeds =[];
-
+    
     function showToast(msg, type='success') {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
-      toast.className = \`toast \${type}\`;
-      toast.innerText = msg;
+      const isError = type === 'error';
+      toast.className = \`toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white \${isError ? 'bg-red-500' : 'bg-slate-800 dark:bg-slate-700 border border-slate-600'}\`;
+      
+      const icon = isError 
+        ? \`<svg class="w-5 h-5 text-red-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>\`
+        : \`<svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>\`;
+      
+      toast.innerHTML = \`\${icon} <span>\${escapeHTML(msg)}</span>\`;
       container.appendChild(toast);
-      setTimeout(() => toast.remove(), 3000);
+      
+      setTimeout(() => {
+        toast.classList.replace('toast-enter', 'toast-leave');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
     }
+
+    // --- THEME MANAGEMENT ---
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    
+    function initTheme() {
+      if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    
+    themeToggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    });
+    
+    initTheme();
+
+    // --- STATE & API ---
+    let secret = localStorage.getItem('admin_secret');
+    let currentFeeds =[];
 
     async function apiFetch(path, options = {}) {
       options.headers = { ...options.headers, 'Authorization': 'Bearer ' + secret };
@@ -414,30 +541,31 @@ function getAdminHTML() {
       location.reload();
     }
 
+    // --- AUTHENTICATION ---
     document.getElementById('login-form').addEventListener('submit', (e) => {
       e.preventDefault();
       localStorage.setItem('admin_secret', document.getElementById('secret-input').value);
       location.reload();
     });
 
+    // --- DASHBOARD LOGIC ---
     async function loadDashboard() {
       if (!secret) {
-        document.getElementById('login-screen').classList.remove('hidden');
+        document.getElementById('view-auth').classList.remove('hidden');
+        document.getElementById('secret-input').focus();
         return;
       }
-      document.getElementById('dashboard-screen').classList.remove('hidden');
+      document.getElementById('view-dashboard').classList.remove('hidden');
 
       try {
-        const [usageRes, feedsRes] = await Promise.all([ apiFetch('/admin/usage'), apiFetch('/admin/feeds') ]);
+        const[usageRes, feedsRes] = await Promise.all([ apiFetch('/admin/usage'), apiFetch('/admin/feeds') ]);
         
         if (usageRes.ok) {
           const data = await usageRes.json();
-          document.getElementById('usage-stats').innerHTML = \`
-            <div class="flex justify-between border-b pb-2"><span class="text-gray-500">Month</span> <span class="font-medium">\${escapeHTML(data.month.replace('usage:', ''))}</span></div>
-            <div class="flex justify-between border-b pb-2"><span class="text-gray-500">Prompt</span> <span class="font-medium">\${data.tokens.prompt.toLocaleString()}</span></div>
-            <div class="flex justify-between border-b pb-2"><span class="text-gray-500">Completion</span> <span class="font-medium">\${data.tokens.completion.toLocaleString()}</span></div>
-            <div class="flex justify-between pt-1 text-lg"><span class="font-bold text-gray-800">Total</span> <span class="font-bold text-blue-600">\${data.tokens.total.toLocaleString()}</span></div>
-          \`;
+          document.getElementById('stat-prompt').innerText = data.tokens.prompt.toLocaleString();
+          document.getElementById('stat-completion').innerText = data.tokens.completion.toLocaleString();
+          document.getElementById('stat-total').innerText = data.tokens.total.toLocaleString();
+          document.querySelectorAll('.skeleton-text').forEach(el => el.classList.remove('skeleton-text', 'animate-pulse', 'text-transparent', 'bg-gray-200', 'dark:bg-slate-700', 'rounded'));
         }
 
         if (feedsRes.ok) {
@@ -445,73 +573,332 @@ function getAdminHTML() {
           currentFeeds = data.feeds ||[];
           renderFeeds();
         }
-      } catch(e) { showToast('Failed to load data', 'error'); }
+      } catch(e) { showToast('Failed to load dashboard data', 'error'); }
     }
 
     function renderFeeds() {
       const list = document.getElementById('feeds-list');
       if(currentFeeds.length === 0) {
-        list.innerHTML = '<li class="text-gray-500 italic bg-gray-50 p-4 rounded-lg border border-dashed">No feeds configured.</li>';
+        list.innerHTML = '<li class="p-8 text-center text-gray-500 dark:text-slate-400 italic">No feeds configured. Click "Add Feed" to get started.</li>';
         return;
       }
+      
       list.innerHTML = currentFeeds.map((f, i) => \`
-        <li class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
-          <div class="mb-3 sm:mb-0 overflow-hidden w-full sm:w-auto">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-gray-800">\${escapeHTML(f.name)}</span> 
-              <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">\${escapeHTML(f.lang)}</span>
+        <li class="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-3 mb-1">
+              <span class="font-bold text-gray-900 dark:text-white truncate">\${escapeHTML(f.name)}</span> 
+              <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-brand-200 dark:border-brand-800/50">\${escapeHTML(f.lang)}</span>
             </div>
-            <a href="\${escapeHTML(f.url)}" target="_blank" class="text-sm text-gray-500 hover:text-blue-500 truncate block max-w-xs sm:max-w-md mt-1">\${escapeHTML(f.url)}</a>
+            <a href="\${escapeHTML(f.url)}" target="_blank" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 truncate block transition-colors">\${escapeHTML(f.url)}</a>
           </div>
-          <div class="flex gap-2 w-full sm:w-auto">
-            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-sm font-medium transition">Clear Cache</button>
-            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded text-sm font-medium transition">Delete</button>
+          <div class="flex gap-2 w-full sm:w-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+            <!-- NEW: Copy URL Button for Admin -->
+            <button onclick="navigator.clipboard.writeText(window.location.origin + '/\${escapeHTML(f.name)}'); showToast('Feed URL copied to clipboard!');" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5" title="Copy RSS URL">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              Copy
+            </button>
+            
+            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              Refresh
+            </button>
+            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+              Delete
+            </button>
+          </div>
+
+            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+              Refresh
+            </button>
+            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+              Delete
+            </button>
           </div>
         </li>
       \`).join('');
     }
 
-    async function saveFeeds(newFeeds) {
-      const res = await apiFetch('/admin/feeds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newFeeds)
-      });
-      if(res.ok) {
-        currentFeeds = newFeeds;
-        renderFeeds();
-        showToast('Feeds updated successfully');
-      } else { showToast('Failed to save feeds', 'error'); }
+    // --- MODAL LOGIC ---
+    const modal = document.getElementById('modal-add');
+    const backdrop = document.getElementById('modal-backdrop');
+    const nameInput = document.getElementById('feed-name');
+
+    function openModal() {
+      modal.classList.remove('hidden');
+      backdrop.classList.remove('hidden');
+      setTimeout(() => nameInput.focus(), 50);
     }
 
+    function closeModal() {
+      modal.classList.add('hidden');
+      backdrop.classList.add('hidden');
+      document.getElementById('add-feed-form').reset();
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+    });
+
+    // --- ACTIONS (OPTIMISTIC UI) ---
     document.getElementById('add-feed-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = document.getElementById('feed-name').value.trim();
+      const name = nameInput.value.trim();
       const url = document.getElementById('feed-url').value.trim();
       const lang = document.getElementById('feed-lang').value.trim();
       
       if(currentFeeds.some(f => f.name === name)) return showToast('Slug already exists!', 'error');
 
       const btn = document.getElementById('add-btn');
-      btn.innerText = 'Adding...'; btn.disabled = true;
-      await saveFeeds([...currentFeeds, { name, url, lang }]);
-      e.target.reset();
-      btn.innerText = 'Add'; btn.disabled = false;
+      const originalText = btn.innerText;
+      btn.innerText = 'Saving...'; btn.disabled = true;
+      
+      const newFeeds = [...currentFeeds, { name, url, lang }];
+      
+      try {
+        const res = await apiFetch('/admin/feeds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newFeeds)
+        });
+        if(!res.ok) throw new Error();
+        
+        currentFeeds = newFeeds;
+        renderFeeds();
+        closeModal();
+        showToast('Feed provisioned successfully');
+      } catch(err) {
+        showToast('Failed to save feed', 'error');
+      } finally {
+        btn.innerText = originalText; btn.disabled = false;
+      }
     });
 
     window.deleteFeed = async (index) => {
-      if(confirm('Delete this feed?')) await saveFeeds(currentFeeds.filter((_, i) => i !== index));
+      if(!confirm('Are you sure you want to permanently delete this feed?')) return;
+      
+      const previousFeeds = [...currentFeeds];
+      currentFeeds.splice(index, 1); // Optimistic update
+      renderFeeds();
+      
+      try {
+        const res = await apiFetch('/admin/feeds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentFeeds)
+        });
+        if(!res.ok) throw new Error();
+        showToast('Feed deleted');
+      } catch(err) {
+        currentFeeds = previousFeeds; // Revert on failure
+        renderFeeds();
+        showToast('Failed to delete feed', 'error');
+      }
     };
 
     window.clearCache = async (name, btn) => {
-      btn.innerText = 'Clearing...'; btn.disabled = true;
-      const res = await apiFetch('/admin/cache/' + name, { method: 'DELETE' });
-      if(res.ok) showToast('Cache cleared for ' + name);
-      else showToast('Failed to clear cache', 'error');
-      btn.innerText = 'Clear Cache'; btn.disabled = false;
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Refreshing...'; 
+      btn.disabled = true;
+      
+      try {
+        const res = await apiFetch('/admin/cache/' + name, { method: 'DELETE' });
+        if(res.ok) showToast('Cache cleared. Next request will fetch fresh data.');
+        else throw new Error();
+      } catch(err) {
+        showToast('Failed to clear cache', 'error');
+      } finally {
+        btn.innerHTML = originalHTML; 
+        btn.disabled = false;
+      }
     };
 
+    // Initialize
     loadDashboard();
+  </script>
+</body>
+</html>`;
+}
+
+
+// ==========================================
+// 7. PUBLIC LANDING PAGE 
+// ==========================================
+
+function getPublicHTML(feeds, baseUrl) {
+  const hasFeeds = feeds && feeds.length > 0;
+  
+  const feedsList = hasFeeds ? feeds.map(f => {
+    const feedUrl = `${baseUrl}/${Utils.escapeHTML(f.name)}`;
+    
+    return `
+    <div class="feed-card group flex flex-col bg-white dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm hover:shadow-xl hover:border-brand-300 dark:hover:border-brand-600 transition-all duration-300" data-search="${Utils.escapeHTML(f.name).toLowerCase()} ${Utils.escapeHTML(f.lang).toLowerCase()}">
+      
+      <div class="flex items-start justify-between gap-4 mb-6">
+        <div class="min-w-0">
+          <div class="flex items-center gap-3 mb-2">
+            <!-- dir="auto" ensures Arabic/Hebrew names align correctly -->
+            <h2 dir="auto" class="text-xl font-bold text-gray-900 dark:text-white truncate">${Utils.escapeHTML(f.name)}</h2>
+            <span class="shrink-0 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-bold px-2.5 py-1 rounded-full border border-brand-200 dark:border-brand-500/20 uppercase tracking-wider">${Utils.escapeHTML(f.lang)}</span>
+          </div>
+          <p class="text-sm text-gray-500 dark:text-slate-400 truncate" title="${Utils.escapeHTML(f.url)}">Source: ${Utils.escapeHTML(f.url)}</p>
+        </div>
+        <div class="shrink-0 bg-orange-50 dark:bg-orange-500/10 p-3 rounded-xl text-orange-500 dark:text-orange-400 border border-orange-100 dark:border-orange-500/20">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 11.08c5.8 0 10.5 4.7 10.5 10.5h-3.2c0-4.03-3.27-7.3-7.3-7.3v-3.2M4 4.5c9.44 0 17.1 7.66 17.1 17.1h-3.2C17.9 13.93 11.67 7.7 4 7.7V4.5z"/></svg>
+        </div>
+      </div>
+
+      <div class="mt-auto pt-5 border-t border-gray-100 dark:border-slate-700/50">
+        <!-- Copy URL Button (Full Width) -->
+        <button onclick="copyToClipboard('${feedUrl}', this)" class="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 dark:bg-slate-900 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 px-4 py-3 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-slate-600">
+          <svg class="icon-copy w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          <svg class="icon-check w-4 h-4 text-emerald-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          <span class="btn-text">Copy RSS Link</span>
+        </button>
+      </div>
+    </div>
+    `;
+  }).join('') : `
+    <div class="col-span-full text-center py-20 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-3xl border border-dashed border-gray-300 dark:border-slate-700">
+      <div class="bg-gray-100 dark:bg-slate-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+        <svg class="w-10 h-10 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path></svg>
+      </div>
+      <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">No Feeds Available</h3>
+      <p class="text-gray-500 dark:text-slate-400 max-w-md mx-auto text-lg">The administrator hasn't configured any translated RSS feeds yet. Check back later!</p>
+    </div>
+  `;
+
+  return `<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Translated RSS Feeds</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'media',
+      theme: { extend: { colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' } } } }
+    }
+  </script>
+  <style>
+    /* Premium Background Pattern */
+    .bg-grid-pattern {
+      background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    @media (prefers-color-scheme: dark) {
+      .bg-grid-pattern { background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-[#0B1120] dark:text-slate-50 min-h-screen selection:bg-brand-500 selection:text-white relative">
+  
+  <!-- Background Grid & Glow -->
+  <div class="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-500/10 dark:bg-brand-500/20 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
+  <!-- Admin Login Button (Top Right) -->
+  <div class="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+    <a href="/admin" class="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border border-gray-200 dark:border-slate-700 rounded-full text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      Admin Login
+    </a>
+  </div>
+
+  <div class="relative z-10 max-w-5xl mx-auto p-6 py-16 sm:py-24">
+    
+    <header class="text-center mb-16 mt-8 sm:mt-0">
+      <div class="inline-flex items-center justify-center p-4 bg-white dark:bg-slate-800/50 backdrop-blur-md rounded-3xl shadow-sm border border-gray-200 dark:border-slate-700/50 mb-8">
+        <svg class="w-10 h-10 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+      </div>
+      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6 text-gray-900 dark:text-white">AI Translated Feeds</h1>
+      <p class="text-lg sm:text-xl text-gray-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">Subscribe to your favorite content, automatically translated into your preferred language using advanced AI.</p>
+    </header>
+
+    ${hasFeeds ? `
+    <!-- Live Search Bar -->
+    <div class="max-w-md mx-auto mb-12 relative">
+      <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      </div>
+      <input type="text" id="searchInput" placeholder="Search feeds or languages..." class="w-full pl-11 pr-4 py-3.5 bg-white dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all shadow-sm dark:text-white placeholder-gray-400 dark:placeholder-slate-500">
+    </div>
+    ` : ''}
+
+    <main id="feedsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      ${feedsList}
+    </main>
+
+    <footer class="mt-24 text-center border-t border-gray-200 dark:border-slate-800/50 pt-10">
+      <p class="text-sm text-gray-500 dark:text-slate-500 flex items-center justify-center gap-1.5">
+        Powered by 
+        <a href="https://github.com/onepurp/RSS-AI-Translator" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+          RSS AI Translator
+        </a>
+      </p>
+    </footer>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full shadow-2xl font-medium text-sm flex items-center gap-2 transition-all duration-300 opacity-0 translate-y-8 pointer-events-none z-50">
+    <svg class="w-5 h-5 text-emerald-400 dark:text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    Link copied to clipboard!
+  </div>
+
+  <script>
+    // Copy to Clipboard Logic with Micro-interactions
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        // Button UI Update
+        const iconCopy = btn.querySelector('.icon-copy');
+        const iconCheck = btn.querySelector('.icon-check');
+        const btnText = btn.querySelector('.btn-text');
+        
+        iconCopy.classList.add('hidden');
+        iconCheck.classList.remove('hidden');
+        btnText.innerText = 'Copied!';
+        btn.classList.add('border-emerald-500', 'text-emerald-600', 'dark:text-emerald-400');
+        
+        // Show Global Toast
+        const toast = document.getElementById('toast');
+        toast.classList.remove('opacity-0', 'translate-y-8');
+        
+        setTimeout(() => {
+          // Reset Button
+          iconCopy.classList.remove('hidden');
+          iconCheck.classList.add('hidden');
+          btnText.innerText = 'Copy RSS Link';
+          btn.classList.remove('border-emerald-500', 'text-emerald-600', 'dark:text-emerald-400');
+          
+          // Hide Toast
+          toast.classList.add('opacity-0', 'translate-y-8');
+        }, 2500);
+      });
+    }
+
+    // Live Search Filtering
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        const cards = document.querySelectorAll('.feed-card');
+        
+        cards.forEach(card => {
+          const searchableText = card.getAttribute('data-search');
+          if (searchableText.includes(term)) {
+            card.style.display = 'flex';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      });
+    }
   </script>
 </body>
 </html>`;
