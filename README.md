@@ -3,7 +3,7 @@
 A production-grade Cloudflare Workers application that monitors external RSS feeds, translates new content via the Groq API, and serves the results as a highly-cached, edge-optimized RSS feed. 
 
 ![Landing page](https://files.catbox.moe/a25iyx.jpg )
-![Admin page](https://files.catbox.moe/6949ma.jpg )
+![Admin page](https://files.catbox.moe/uyxsqo.jpg )
 
 ## Overview
 
