@@ -326,7 +326,7 @@ export default {
 };
 
 // ==========================================
-// 6. SECURE UI GENERATOR (MODERN SPA)
+// 6. SECURE UI GENERATOR (PREMIUM ADMIN SPA)
 // ==========================================
 
 function getAdminHTML() {
@@ -342,7 +342,7 @@ function getAdminHTML() {
       darkMode: 'class',
       theme: {
         extend: {
-          colors: { brand: { 500: '#3B82F6', 600: '#2563EB', 700: '#1D4ED8' } }
+          colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' } }
         }
       }
     }
@@ -357,73 +357,83 @@ function getAdminHTML() {
     @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
     @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     
-    /* Scrollbar styling for dark mode */
+    /* Scrollbar styling */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+    /* Premium Background Pattern */
+    .bg-grid-pattern {
+      background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .dark .bg-grid-pattern { background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px); }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-slate-900 dark:text-slate-50 min-h-screen transition-colors duration-200">
+<body class="bg-gray-50 text-gray-900 dark:bg-[#0B1120] dark:text-slate-50 min-h-screen transition-colors duration-200 relative selection:bg-brand-500 selection:text-white">
   
+  <!-- Background Grid & Glow -->
+  <div class="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-500/10 dark:bg-brand-500/20 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
   <!-- VIEW A: AUTHENTICATION -->
-  <div id="view-auth" class="hidden min-h-screen flex items-center justify-center p-4">
-    <div class="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700">
+  <div id="view-auth" class="hidden min-h-screen flex items-center justify-center p-4 relative z-10">
+    <div class="w-full max-w-md bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-8 rounded-3xl shadow-xl border border-gray-200 dark:border-slate-700/50">
       <div class="flex justify-center mb-6">
-        <div class="bg-brand-100 dark:bg-brand-900/30 p-3 rounded-xl">
-          <svg class="w-8 h-8 text-brand-600 dark:text-brand-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+        <div class="bg-brand-100 dark:bg-brand-900/30 p-4 rounded-2xl border border-brand-200 dark:border-brand-800/50 shadow-inner">
+          <svg class="w-8 h-8 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
         </div>
       </div>
-      <h2 class="text-2xl font-bold mb-6 text-center">Admin Access</h2>
+      <h2 class="text-3xl font-extrabold mb-2 text-center tracking-tight">Admin Access</h2>
+      <p class="text-center text-gray-500 dark:text-slate-400 mb-8">Enter your master secret to continue</p>
       <form id="login-form" class="space-y-5">
         <div>
           <label for="secret-input" class="sr-only">Admin Secret</label>
-          <input type="password" id="secret-input" placeholder="Enter Admin Secret" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3.5 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all dark:text-white" required>
+          <input type="password" id="secret-input" placeholder="Enter Admin Secret" class="w-full bg-white dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3.5 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all dark:text-white shadow-sm" required>
         </div>
-        <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-xl font-medium transition-colors shadow-sm active:scale-[0.98]">Secure Login</button>
+        <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-xl font-semibold transition-colors shadow-md hover:shadow-lg active:scale-[0.98]">Secure Login</button>
       </form>
     </div>
   </div>
 
   <!-- VIEW B: DASHBOARD -->
-  <div id="view-dashboard" class="hidden max-w-5xl mx-auto p-6 space-y-8 pb-20">
+  <div id="view-dashboard" class="hidden max-w-5xl mx-auto p-6 space-y-8 pb-12 relative z-10">
     
     <!-- Header -->
-    <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-slate-800 pb-6 pt-4">
+    <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 dark:border-slate-800/50 pb-6 pt-4">
       <div>
-        <h1 class="text-3xl font-bold tracking-tight">RSS AI Translator</h1>
+        <h1 class="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">RSS AI Translator</h1>
         <div class="flex items-center gap-2 mt-2">
           <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
           <span class="text-sm font-medium text-emerald-600 dark:text-emerald-400">System Online & Active</span>
         </div>
       </div>
       <div class="flex items-center gap-3">
-        <button id="theme-toggle" aria-label="Toggle Dark Mode" class="p-2.5 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shadow-sm">
-          <!-- Sun Icon (Hidden in Light Mode) -->
+        <button id="theme-toggle" aria-label="Toggle Dark Mode" class="p-2.5 rounded-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700/50 text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors shadow-sm">
           <svg id="icon-sun" class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-          <!-- Moon Icon (Hidden in Dark Mode) -->
           <svg id="icon-moon" class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
         </button>
-        <button onclick="logout()" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">Logout</button>
+        <button onclick="logout()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-slate-300 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors shadow-sm">Logout</button>
       </div>
     </header>
 
     <!-- Top Section: Metrics -->
     <section>
-      <h2 class="text-lg font-semibold mb-4 text-gray-800 dark:text-slate-200">Groq Token Usage</h2>
+      <h2 class="text-lg font-bold mb-4 text-gray-800 dark:text-slate-200">Groq Token Usage</h2>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
-          <p class="text-sm text-gray-500 dark:text-slate-400 font-medium mb-1">Prompt Tokens</p>
-          <p id="stat-prompt" class="text-2xl font-bold text-gray-900 dark:text-white skeleton-text">---</p>
+        <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-shadow">
+          <p class="text-sm text-gray-500 dark:text-slate-400 font-semibold mb-1 uppercase tracking-wider">Prompt Tokens</p>
+          <p id="stat-prompt" class="text-3xl font-extrabold text-gray-900 dark:text-white skeleton-text">---</p>
         </div>
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
-          <p class="text-sm text-gray-500 dark:text-slate-400 font-medium mb-1">Completion Tokens</p>
-          <p id="stat-completion" class="text-2xl font-bold text-gray-900 dark:text-white skeleton-text">---</p>
+        <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm hover:shadow-md transition-shadow">
+          <p class="text-sm text-gray-500 dark:text-slate-400 font-semibold mb-1 uppercase tracking-wider">Completion Tokens</p>
+          <p id="stat-completion" class="text-3xl font-extrabold text-gray-900 dark:text-white skeleton-text">---</p>
         </div>
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-xl border border-brand-200 dark:border-brand-900/50 shadow-sm relative overflow-hidden">
-          <div class="absolute top-0 right-0 w-16 h-16 bg-brand-100 dark:bg-brand-900/20 rounded-bl-full -mr-8 -mt-8"></div>
-          <p class="text-sm text-brand-600 dark:text-brand-400 font-medium mb-1">Total Tokens (This Month)</p>
-          <p id="stat-total" class="text-3xl font-bold text-brand-700 dark:text-brand-300 skeleton-text">---</p>
+        <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl border border-brand-200 dark:border-brand-800/50 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+          <div class="absolute top-0 right-0 w-24 h-24 bg-brand-100 dark:bg-brand-900/20 rounded-bl-full -mr-8 -mt-8"></div>
+          <p class="text-sm text-brand-600 dark:text-brand-400 font-semibold mb-1 uppercase tracking-wider">Total (This Month)</p>
+          <p id="stat-total" class="text-4xl font-extrabold text-brand-700 dark:text-brand-300 skeleton-text">---</p>
         </div>
       </div>
     </section>
@@ -431,50 +441,61 @@ function getAdminHTML() {
     <!-- Main Section: Feeds -->
     <section>
       <div class="flex justify-between items-end mb-4">
-        <h2 class="text-lg font-semibold text-gray-800 dark:text-slate-200">Managed Feeds</h2>
-        <button onclick="openModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center gap-2 active:scale-[0.98]">
+        <h2 class="text-lg font-bold text-gray-800 dark:text-slate-200">Managed Feeds</h2>
+        <button onclick="openModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-md hover:shadow-lg flex items-center gap-2 active:scale-[0.98]">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
           Add Feed
         </button>
       </div>
       
-      <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm overflow-hidden">
         <ul id="feeds-list" class="divide-y divide-gray-100 dark:divide-slate-700/50">
           <!-- Skeleton Loaders -->
-          <li class="p-5 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/3"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
-          <li class="p-5 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/4"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
+          <li class="p-6 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/3"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
+          <li class="p-6 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/4"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
         </ul>
       </div>
     </section>
+
+    <!-- Footer -->
+    <footer class="mt-16 text-center border-t border-gray-200 dark:border-slate-800/50 pt-8">
+      <p class="text-sm text-gray-500 dark:text-slate-500 flex items-center justify-center gap-1.5">
+        Powered by 
+        <a href="https://github.com/onepurp/RSS-AI-Translator" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+          RSS AI Translator
+        </a>
+      </p>
+    </footer>
   </div>
 
   <!-- OVERLAY: ADD FEED MODAL -->
   <div id="modal-backdrop" class="hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div>
   <div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-    <div class="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 overflow-hidden modal-enter">
-      <div class="flex justify-between items-center p-5 border-b border-gray-100 dark:border-slate-700/50">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-white">Provision New Feed</h3>
-        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700">
+    <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-700/50 overflow-hidden modal-enter">
+      <div class="flex justify-between items-center p-6 border-b border-gray-100 dark:border-slate-700/50">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white">Provision New Feed</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
-      <form id="add-feed-form" class="p-5 space-y-4">
+      <form id="add-feed-form" class="p-6 space-y-5">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">URL Slug (Name)</label>
-          <input type="text" id="feed-name" placeholder="e.g. tech-news" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
-          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1">This will be the URL path: /tech-news</p>
+          <label class="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5">URL Slug (Name)</label>
+          <input type="text" id="feed-name" placeholder="e.g. tech-news" class="w-full bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none dark:text-white shadow-sm" required>
+          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1.5">This will be the URL path: /tech-news</p>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Source RSS URL</label>
-          <input type="url" id="feed-url" placeholder="https://example.com/feed.xml" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
+          <label class="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5">Source RSS URL</label>
+          <input type="url" id="feed-url" placeholder="https://example.com/feed.xml" class="w-full bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none dark:text-white shadow-sm" required>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Target Language</label>
-          <input type="text" id="feed-lang" placeholder="e.g. Arabic, French, Spanish" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-2.5 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:text-white" required>
+          <label class="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5">Target Language</label>
+          <input type="text" id="feed-lang" placeholder="e.g. Arabic, French, Spanish" class="w-full bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none dark:text-white shadow-sm" required>
         </div>
         <div class="pt-4 flex gap-3 justify-end">
-          <button type="button" onclick="closeModal()" class="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
-          <button type="submit" id="add-btn" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm active:scale-[0.98]">Save Feed</button>
+          <button type="button" onclick="closeModal()" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+          <button type="submit" id="add-btn" class="bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-md hover:shadow-lg active:scale-[0.98]">Save Feed</button>
         </div>
       </form>
     </div>
@@ -491,7 +512,7 @@ function getAdminHTML() {
       const container = document.getElementById('toast-container');
       const toast = document.createElement('div');
       const isError = type === 'error';
-      toast.className = \`toast-enter pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white \${isError ? 'bg-red-500' : 'bg-slate-800 dark:bg-slate-700 border border-slate-600'}\`;
+      toast.className = \`toast-enter pointer-events-auto flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl text-sm font-semibold text-white \${isError ? 'bg-red-500' : 'bg-slate-800 dark:bg-slate-700 border border-slate-600'}\`;
       
       const icon = isError 
         ? \`<svg class="w-5 h-5 text-red-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>\`
@@ -579,41 +600,29 @@ function getAdminHTML() {
     function renderFeeds() {
       const list = document.getElementById('feeds-list');
       if(currentFeeds.length === 0) {
-        list.innerHTML = '<li class="p-8 text-center text-gray-500 dark:text-slate-400 italic">No feeds configured. Click "Add Feed" to get started.</li>';
+        list.innerHTML = '<li class="p-10 text-center text-gray-500 dark:text-slate-400 italic">No feeds configured. Click "Add Feed" to get started.</li>';
         return;
       }
       
       list.innerHTML = currentFeeds.map((f, i) => \`
-        <li class="p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors group">
+        <li class="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors group">
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-3 mb-1">
-              <span class="font-bold text-gray-900 dark:text-white truncate">\${escapeHTML(f.name)}</span> 
-              <span class="bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-brand-200 dark:border-brand-800/50">\${escapeHTML(f.lang)}</span>
+            <div class="flex items-center gap-3 mb-1.5">
+              <span dir="auto" class="font-bold text-lg text-gray-900 dark:text-white truncate">\${escapeHTML(f.name)}</span> 
+              <span class="bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-bold px-2.5 py-1 rounded-full border border-brand-200 dark:border-brand-500/20 uppercase tracking-wider">\${escapeHTML(f.lang)}</span>
             </div>
             <a href="\${escapeHTML(f.url)}" target="_blank" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 truncate block transition-colors">\${escapeHTML(f.url)}</a>
           </div>
           <div class="flex gap-2 w-full sm:w-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <!-- NEW: Copy URL Button for Admin -->
-            <button onclick="navigator.clipboard.writeText(window.location.origin + '/\${escapeHTML(f.name)}'); showToast('Feed URL copied to clipboard!');" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5" title="Copy RSS URL">
+            <button onclick="navigator.clipboard.writeText(window.location.origin + '/\${escapeHTML(f.name)}'); showToast('Feed URL copied to clipboard!');" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5" title="Copy RSS URL">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
               Copy
             </button>
-            
-            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
               Refresh
             </button>
-            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-              Delete
-            </button>
-          </div>
-
-            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-              Refresh
-            </button>
-            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               Delete
             </button>
@@ -639,7 +648,6 @@ function getAdminHTML() {
       document.getElementById('add-feed-form').reset();
     }
 
-    // Close modal on Escape key
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
     });
@@ -657,7 +665,7 @@ function getAdminHTML() {
       const originalText = btn.innerText;
       btn.innerText = 'Saving...'; btn.disabled = true;
       
-      const newFeeds = [...currentFeeds, { name, url, lang }];
+      const newFeeds =[...currentFeeds, { name, url, lang }];
       
       try {
         const res = await apiFetch('/admin/feeds', {
@@ -682,7 +690,7 @@ function getAdminHTML() {
       if(!confirm('Are you sure you want to permanently delete this feed?')) return;
       
       const previousFeeds = [...currentFeeds];
-      currentFeeds.splice(index, 1); // Optimistic update
+      currentFeeds.splice(index, 1); 
       renderFeeds();
       
       try {
@@ -694,7 +702,7 @@ function getAdminHTML() {
         if(!res.ok) throw new Error();
         showToast('Feed deleted');
       } catch(err) {
-        currentFeeds = previousFeeds; // Revert on failure
+        currentFeeds = previousFeeds; 
         renderFeeds();
         showToast('Failed to delete feed', 'error');
       }
@@ -717,7 +725,6 @@ function getAdminHTML() {
       }
     };
 
-    // Initialize
     loadDashboard();
   </script>
 </body>
