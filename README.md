@@ -1,6 +1,9 @@
 # RSS AI Translator
 
-A production-grade Cloudflare Workers application that monitors external RSS feeds, translates new content via the Groq API (Llama 3.3), and serves the results as a highly-cached, edge-optimized RSS feed. 
+A production-grade Cloudflare Workers application that monitors external RSS feeds, translates new content via the Groq API, and serves the results as a highly-cached, edge-optimized RSS feed. 
+
+![Landing page](https://files.catbox.moe/a25iyx.jpg )
+![Admin page](https://files.catbox.moe/6949ma.jpg )
 
 ## Overview
 
@@ -13,8 +16,8 @@ The system operates on a scheduled interval to fetch external RSS feeds. It uses
 * **Cost Monitoring**: Silently tracks your Groq API prompt and completion tokens in the background, keeping a running monthly total.
 * **RTL Language Support**: Automatically detects Right-to-Left languages (Arabic, Hebrew, Persian, Urdu) and injects HTML formatting so feeds render perfectly in RSS readers.
 * **Enterprise Resiliency**: Features parallel processing, exponential backoff for API rate limits, and a Dead Letter Queue (DLQ) to prevent failed items from blocking the translation pipeline.
-* **Resource Optimization**: Automatically trims long descriptions, limits batch sizes, and utilizes an in-memory cache to minimize KV read operations and stay within Cloudflare Worker CPU limits.
-
+**Media Preservation**: Advanced parsing that extracts and preserves `<enclosure>` and `<media:content>` tags, ensuring images and videos appear perfectly in RSS readers.
+  
 ## Infrastructure Requirements
 
 1. **Cloudflare KV Namespaces**:
