@@ -16,7 +16,7 @@ The system operates on a scheduled interval to fetch external RSS feeds. It uses
 * **Cost Monitoring**: Silently tracks your Groq API prompt and completion tokens in the background, keeping a running monthly total.
 * **RTL Language Support**: Automatically detects Right-to-Left languages (Arabic, Hebrew, Persian, Urdu) and injects HTML formatting so feeds render perfectly in RSS readers.
 * **Enterprise Resiliency**: Features parallel processing, exponential backoff for API rate limits, and a Dead Letter Queue (DLQ) to prevent failed items from blocking the translation pipeline.
-**Media Preservation**: Advanced parsing that extracts and preserves `<enclosure>` and `<media:content>` tags, ensuring images and videos appear perfectly in RSS readers.
+* **Media Preservation**: Advanced parsing that extracts and preserves `<enclosure>` and `<media:content>` tags, ensuring images and videos appear perfectly in RSS readers.
   
 ## Infrastructure Requirements
 
