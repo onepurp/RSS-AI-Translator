@@ -66,26 +66,30 @@ const LLMService = {
   async translate(items, lang, env, ctx) {
     if (!items.length) return[];
     
-    const cleanedItems = items.map(i => ({ id: i.id, t: i.title.substring(0, 300), d: i.description.substring(0, 1500) }));
+    const cleanedItems = items.map(i => ({ 
+      id: i.id, 
+      t: i.title.substring(0, 500), 
+      d: i.description.substring(0, 14000) 
+    }));
+    
     const payload = JSON.stringify({
       // model: "llama-3.3-70b-versatile", 
       model: "openai/gpt-oss-120b", 
-
       messages:[
         { 
           role: "system", 
           content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
           // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
+
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.1,
-      max_tokens: 4096
+      temperature: 0.1
     });
 
     let data = null;
-    let delay = 1000; 
+    let delay = 2000; 
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -94,12 +98,41 @@ const LLMService = {
         body: payload
       });
 
-      if (res.ok) { data = await res.json(); break; }
-      if (res.status === 429 || res.status >= 500) {
-        if (attempt === 3) return[];
+      const status = res.status;
+
+      if (res.ok) { 
+        data = await res.json(); 
+        break; 
+      }
+      
+      if (status === 429 || status === 498 || status >= 500) {
+        if (attempt === 3) {
+          if (status === 429 || status === 498) throw new Error("RATE_LIMIT_EXCEEDED");
+          if (status >= 500) throw new Error("SERVER_ERROR");
+        }
+        console.warn(`⚠️ Groq API (${status}). Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2; 
-      } else { return[]; }
+      } 
+      
+      else {
+        const errText = await res.text();
+        let errorReason = "Unknown Error";
+        switch(status) {
+          case 400: errorReason = "Bad Request - Invalid syntax"; break;
+          case 401: errorReason = "Unauthorized - Invalid API Key"; break;
+          case 403: errorReason = "Forbidden - Permission restricted"; break;
+          case 404: errorReason = "Not Found - Endpoint missing"; break;
+          case 413: errorReason = "Payload Too Large - Reduce text size"; break;
+          case 422: errorReason = "Unprocessable Entity - Semantic error/Hallucination"; break;
+          case 424: errorReason = "Failed Dependency"; break;
+          case 499: errorReason = "Request Cancelled"; break;
+        }
+        
+        Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status} (${errorReason}): ${errText}`));
+        // Returning an empty array triggers the DLQ, marking these specific items as failed
+        return[]; 
+      }
     }
 
     if (!data?.choices?.[0]) return[];
@@ -160,7 +193,7 @@ const RSSService = {
         <link>${Utils.escapeXML(i.link)}</link>
         <pubDate>${Utils.escapeXML(i.pubDate)}</pubDate>
         <guid isPermaLink="false">${Utils.escapeXML(i.id)}</guid>
-        ${i.media || ""} <!-- FIX: Inject the original media tags back into the item -->
+        ${i.media || ""}
       </item>`).join("");
       
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -204,8 +237,14 @@ const RSSService = {
       const finalItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
       const rss = this.generate(finalItems, config);
       await env.RSS_CACHE.put(`feed:${config.name}`, rss, { expirationTtl: 86400 });
+      
     } catch (e) {
-      Utils.logError(`processFeed:${config.name}`, e);
+      // Queue Pausing for Temporary Groq Outages / Rate Limits
+      if (e.message === "RATE_LIMIT_EXCEEDED" || e.message === "SERVER_ERROR") {
+        console.warn(`⏳ Groq API unavailable (${e.message}) for ${config.name}. Items left in queue for next run.`);
+      } else {
+        Utils.logError(`processFeed:${config.name}`, e);
+      }
     }
   }
 };
