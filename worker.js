@@ -78,8 +78,8 @@ const LLMService = {
       messages:[
         { 
           role: "system", 
-          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
-          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <iframe>, <a>) exactly as they appear. Do not translate URLs. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
+          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <tg-emoji>, <a>) exactly as they appear. Do not translate URLs or inline scripts. Return ONLY valid JSON. Ensure all HTML attributes and quotes are properly escaped: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <tg-emoji>, <a>) exactly as they appear. Do not translate URLs or inline scripts. Return ONLY valid JSON. Ensure all HTML attributes and quotes are properly escaped: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
 
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
@@ -142,7 +142,19 @@ const LLMService = {
     }
 
     try {
-      const parsed = JSON.parse(data.choices[0].message.content).items ||[];
+      let content = data.choices[0].message.content;
+      
+      content = content.replace(/```json/gi, '').replace(/```/g, '').trim();
+      
+      const startIdx = content.indexOf('{');
+      const endIdx = content.lastIndexOf('}');
+      if (startIdx !== -1 && endIdx !== -1) {
+        content = content.substring(startIdx, endIdx + 1);
+      }
+      
+      content = content.replace(/[\u0000-\u001F]+/g, " ");
+
+      const parsed = JSON.parse(content).items ||[];
       if (!Array.isArray(parsed)) throw new Error("Invalid JSON array");
       
       return parsed.map(p => {
@@ -151,7 +163,7 @@ const LLMService = {
       }).filter(Boolean);
     } catch (err) { 
       Utils.logError("LLM_Parse", err);
-      return[]; 
+      return 
     }
   }
 };
