@@ -195,7 +195,6 @@ const LLMService = {
         const orig = items.find(i => i.id === p.id);
         if (!orig) return null;
 
-        // NEW: Decode the HTML placeholders back into real HTML
         const maps = itemMaps[p.id];
         const decodedTitle = Utils.HTMLProcessor.decode(p.t || orig.title, maps.tMap);
         const decodedDesc = Utils.HTMLProcessor.decode(p.d || orig.description, maps.dMap);
@@ -410,7 +409,7 @@ export default {
 };
 
 // ==========================================
-// 6. SECURE UI GENERATOR (PREMIUM ADMIN SPA)
+// 6. SECURE UI GENERATOR
 // ==========================================
 
 function getAdminHTML() {
@@ -432,7 +431,6 @@ function getAdminHTML() {
     }
   </script>
   <style>
-    /* Custom Animations */
     .toast-enter { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
     .toast-leave { animation: fadeOut 0.3s ease forwards; }
     .modal-enter { animation: scaleIn 0.2s ease-out forwards; }
@@ -441,13 +439,11 @@ function getAdminHTML() {
     @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
     @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
     
-    /* Scrollbar styling */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     .dark ::-webkit-scrollbar-thumb { background: #475569; }
 
-    /* Premium Background Pattern */
     .bg-grid-pattern {
       background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
       background-size: 24px 24px;
@@ -524,19 +520,40 @@ function getAdminHTML() {
 
     <!-- Main Section: Feeds -->
     <section>
-      <div class="flex justify-between items-end mb-4">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
         <h2 class="text-lg font-bold text-gray-800 dark:text-slate-200">Managed Feeds</h2>
-        <button onclick="openModal()" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-md hover:shadow-lg flex items-center gap-2 active:scale-[0.98]">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-          Add Feed
-        </button>
+        
+        <!-- NEW: Action Bar (Search, Clear All, Add) -->
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          
+          <!-- Live Search -->
+          <div class="relative w-full sm:w-64">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <input type="text" id="adminSearchInput" placeholder="Search feeds..." class="w-full pl-9 pr-4 py-2.5 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700/50 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm dark:text-white text-sm placeholder-gray-400">
+          </div>
+
+          <div class="flex gap-2 w-full sm:w-auto">
+            <!-- Clear All Caches -->
+            <button onclick="clearAllCaches(this)" class="flex-1 sm:flex-none bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+              Clear All
+            </button>
+            
+            <!-- Add Feed -->
+            <button onclick="openModal()" class="flex-1 sm:flex-none bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2 active:scale-[0.98]">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+              Add Feed
+            </button>
+          </div>
+        </div>
       </div>
       
       <div class="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm overflow-hidden">
         <ul id="feeds-list" class="divide-y divide-gray-100 dark:divide-slate-700/50">
           <!-- Skeleton Loaders -->
           <li class="p-6 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/3"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
-          <li class="p-6 animate-pulse flex justify-between"><div class="h-5 bg-gray-200 dark:bg-slate-700 rounded w-1/4"></div><div class="h-8 bg-gray-200 dark:bg-slate-700 rounded w-24"></div></li>
         </ul>
       </div>
     </section>
@@ -553,21 +570,21 @@ function getAdminHTML() {
     </footer>
   </div>
 
-  <!-- OVERLAY: ADD FEED MODAL -->
+  <!-- OVERLAY: ADD/EDIT FEED MODAL -->
   <div id="modal-backdrop" class="hidden fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity"></div>
   <div id="modal-add" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
     <div class="bg-white/95 dark:bg-slate-800/95 backdrop-blur-2xl w-full max-w-lg rounded-3xl shadow-2xl border border-gray-200 dark:border-slate-700/50 overflow-hidden modal-enter">
       <div class="flex justify-between items-center p-6 border-b border-gray-100 dark:border-slate-700/50">
-        <h3 class="text-xl font-bold text-gray-900 dark:text-white">Provision New Feed</h3>
+        <h3 id="modal-title" class="text-xl font-bold text-gray-900 dark:text-white">Provision New Feed</h3>
         <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
       </div>
       <form id="add-feed-form" class="p-6 space-y-5">
+        <input type="hidden" id="edit-index" value="">
         <div>
           <label class="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5">URL Slug (Name)</label>
           <input type="text" id="feed-name" placeholder="e.g. tech-news" class="w-full bg-gray-50 dark:bg-slate-900/50 border border-gray-200 dark:border-slate-700 p-3 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none dark:text-white shadow-sm" required>
-          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1.5">This will be the URL path: /tech-news</p>
         </div>
         <div>
           <label class="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5">Source RSS URL</label>
@@ -613,7 +630,6 @@ function getAdminHTML() {
 
     // --- THEME MANAGEMENT ---
     const themeToggleBtn = document.getElementById('theme-toggle');
-    
     function initTheme() {
       if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
@@ -621,13 +637,10 @@ function getAdminHTML() {
         document.documentElement.classList.remove('dark');
       }
     }
-    
     themeToggleBtn.addEventListener('click', () => {
       document.documentElement.classList.toggle('dark');
-      const isDark = document.documentElement.classList.contains('dark');
-      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
     });
-    
     initTheme();
 
     // --- STATE & API ---
@@ -646,7 +659,6 @@ function getAdminHTML() {
       location.reload();
     }
 
-    // --- AUTHENTICATION ---
     document.getElementById('login-form').addEventListener('submit', (e) => {
       e.preventDefault();
       localStorage.setItem('admin_secret', document.getElementById('secret-input').value);
@@ -689,7 +701,7 @@ function getAdminHTML() {
       }
       
       list.innerHTML = currentFeeds.map((f, i) => \`
-        <li class="p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors group">
+        <li class="admin-feed-card p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 hover:bg-gray-50/50 dark:hover:bg-slate-700/30 transition-colors group" data-search="\${escapeHTML(f.name).toLowerCase()} \${escapeHTML(f.lang).toLowerCase()}">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-3 mb-1.5">
               <span dir="auto" class="font-bold text-lg text-gray-900 dark:text-white truncate">\${escapeHTML(f.name)}</span> 
@@ -697,16 +709,21 @@ function getAdminHTML() {
             </div>
             <a href="\${escapeHTML(f.url)}" target="_blank" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 truncate block transition-colors">\${escapeHTML(f.url)}</a>
           </div>
-          <div class="flex gap-2 w-full sm:w-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <button onclick="navigator.clipboard.writeText(window.location.origin + '/\${escapeHTML(f.name)}'); showToast('Feed URL copied to clipboard!');" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5" title="Copy RSS URL">
+          <div class="flex flex-wrap gap-2 w-full lg:w-auto opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+            <button onclick="navigator.clipboard.writeText(window.location.origin + '/\${escapeHTML(f.name)}'); showToast('Feed URL copied!');" class="flex-1 lg:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5" title="Copy RSS URL">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
               Copy
             </button>
-            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <!-- NEW: Edit Button -->
+            <button onclick="openModal(\${i})" class="flex-1 lg:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+              Edit
+            </button>
+            <button onclick="clearCache('\${escapeHTML(f.name)}', this)" class="flex-1 lg:flex-none bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 px-3 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
               Refresh
             </button>
-            <button onclick="deleteFeed(\${i})" class="flex-1 sm:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <button onclick="deleteFeed(\${i})" class="flex-1 lg:flex-none bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 px-3 py-2 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center justify-center gap-1.5">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               Delete
             </button>
@@ -715,41 +732,78 @@ function getAdminHTML() {
       \`).join('');
     }
 
-    // --- MODAL LOGIC ---
+    // --- LIVE SEARCH ---
+    const searchInput = document.getElementById('adminSearchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        document.querySelectorAll('.admin-feed-card').forEach(card => {
+          card.style.display = card.getAttribute('data-search').includes(term) ? 'flex' : 'none';
+        });
+      });
+    }
+
+    // --- MODAL LOGIC (ADD & EDIT) ---
     const modal = document.getElementById('modal-add');
     const backdrop = document.getElementById('modal-backdrop');
-    const nameInput = document.getElementById('feed-name');
+    
+    function openModal(editIndex = null) {
+      const title = document.getElementById('modal-title');
+      const btn = document.getElementById('add-btn');
+      const indexInput = document.getElementById('edit-index');
+      
+      if (editIndex !== null) {
+        const feed = currentFeeds[editIndex];
+        document.getElementById('feed-name').value = feed.name;
+        document.getElementById('feed-url').value = feed.url;
+        document.getElementById('feed-lang').value = feed.lang;
+        indexInput.value = editIndex;
+        title.innerText = 'Edit Feed';
+        btn.innerText = 'Update Feed';
+      } else {
+        document.getElementById('add-feed-form').reset();
+        indexInput.value = '';
+        title.innerText = 'Provision New Feed';
+        btn.innerText = 'Save Feed';
+      }
 
-    function openModal() {
       modal.classList.remove('hidden');
       backdrop.classList.remove('hidden');
-      setTimeout(() => nameInput.focus(), 50);
+      setTimeout(() => document.getElementById('feed-name').focus(), 50);
     }
 
     function closeModal() {
       modal.classList.add('hidden');
       backdrop.classList.add('hidden');
-      document.getElementById('add-feed-form').reset();
     }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
     });
 
-    // --- ACTIONS (OPTIMISTIC UI) ---
+    // --- ACTIONS ---
     document.getElementById('add-feed-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = nameInput.value.trim();
+      const name = document.getElementById('feed-name').value.trim();
       const url = document.getElementById('feed-url').value.trim();
       const lang = document.getElementById('feed-lang').value.trim();
+      const editIndex = document.getElementById('edit-index').value;
       
-      if(currentFeeds.some(f => f.name === name)) return showToast('Slug already exists!', 'error');
+      // Check for duplicate slug (only if adding new, or changing name of existing)
+      if (editIndex === "" && currentFeeds.some(f => f.name === name)) {
+        return showToast('Slug already exists!', 'error');
+      }
 
       const btn = document.getElementById('add-btn');
       const originalText = btn.innerText;
       btn.innerText = 'Saving...'; btn.disabled = true;
       
-      const newFeeds =[...currentFeeds, { name, url, lang }];
+      let newFeeds = [...currentFeeds];
+      if (editIndex !== "") {
+        newFeeds[editIndex] = { name, url, lang }; // Update existing
+      } else {
+        newFeeds.push({ name, url, lang }); // Add new
+      }
       
       try {
         const res = await apiFetch('/admin/feeds', {
@@ -762,7 +816,7 @@ function getAdminHTML() {
         currentFeeds = newFeeds;
         renderFeeds();
         closeModal();
-        showToast('Feed provisioned successfully');
+        showToast(editIndex !== "" ? 'Feed updated successfully' : 'Feed provisioned successfully');
       } catch(err) {
         showToast('Failed to save feed', 'error');
       } finally {
@@ -803,6 +857,26 @@ function getAdminHTML() {
         else throw new Error();
       } catch(err) {
         showToast('Failed to clear cache', 'error');
+      } finally {
+        btn.innerHTML = originalHTML; 
+        btn.disabled = false;
+      }
+    };
+
+    // NEW: Clear All Caches
+    window.clearAllCaches = async (btn) => {
+      if(!confirm('Are you sure you want to clear the cache for ALL feeds? This will force the AI to re-translate everything on the next run.')) return;
+      
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Clearing...'; 
+      btn.disabled = true;
+      
+      try {
+        // Fire off delete requests for all feeds concurrently
+        await Promise.all(currentFeeds.map(f => apiFetch('/admin/cache/' + f.name, { method: 'DELETE' })));
+        showToast('All caches cleared successfully!');
+      } catch(err) {
+        showToast('Failed to clear some caches', 'error');
       } finally {
         btn.innerHTML = originalHTML; 
         btn.disabled = false;
