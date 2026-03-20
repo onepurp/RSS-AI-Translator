@@ -1,4 +1,3 @@
-
 // ==========================================
 // 1. UTILITIES & SECURITY
 // ==========================================
@@ -12,6 +11,32 @@ const Utils = {
   logError: (context, error) => {
     const payload = { timestamp: new Date().toISOString(), context, message: error.message, stack: error.stack };
     console.error(`[ERROR] ${JSON.stringify(payload)}`);
+  },
+
+  HTMLProcessor: {
+    encode: (text) => {
+      if (!text) return { encoded: "", map: {} };
+      const map = {};
+      let counter = 0;
+      // Find all HTML tags and replace them with [__T0__], [__T1__], etc.
+      const encoded = text.replace(/<[^>]+>/g, (match) => {
+        const key = `[__T${counter}__]`;
+        map[key] = match;
+        counter++;
+        return key;
+      });
+      return { encoded, map };
+    },
+    decode: (text, map) => {
+      if (!text) return "";
+      let decoded = text;
+      // Swap the placeholders back to the original HTML
+      for (const [key, value] of Object.entries(map)) {
+        const safeKey = key.replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+        decoded = decoded.replace(new RegExp(safeKey, 'g'), value);
+      }
+      return decoded;
+    }
   }
 };
 
@@ -66,20 +91,30 @@ const LLMService = {
   async translate(items, lang, env, ctx) {
     if (!items.length) return[];
     
-    const cleanedItems = items.map(i => ({ 
-      id: i.id, 
-      t: i.title.substring(0, 500), 
-      d: i.description.substring(0, 14000) 
-    }));
+    // NEW: Store the HTML maps so we can decode them later
+    const itemMaps = {};
+
+    const cleanedItems = items.map(i => {
+      // Encode the HTML into tiny placeholders to save tokens
+      const tEncoded = Utils.HTMLProcessor.encode(i.title.substring(0, 500));
+      const dEncoded = Utils.HTMLProcessor.encode(i.description.substring(0, 14000));
+      
+      itemMaps[i.id] = { tMap: tEncoded.map, dMap: dEncoded.map };
+      
+      return { 
+        id: i.id, 
+        t: tEncoded.encoded, 
+        d: dEncoded.encoded 
+      };
+    });
     
     const payload = JSON.stringify({
-      // model: "llama-3.3-70b-versatile", 
       model: "openai/gpt-oss-120b", 
       messages:[
         { 
           role: "system", 
-          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <tg-emoji>, <a>) exactly as they appear. Do not translate URLs or inline scripts. Return ONLY valid JSON. Ensure all HTML attributes and quotes are properly escaped: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
-          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: You MUST preserve all HTML tags (like <img>, <video>, <tg-emoji>, <a>) exactly as they appear. Do not translate URLs or inline scripts. Return ONLY valid JSON. Ensure all HTML attributes and quotes are properly escaped: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+         // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
 
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
@@ -130,7 +165,6 @@ const LLMService = {
         }
         
         Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status} (${errorReason}): ${errText}`));
-        // Returning an empty array triggers the DLQ, marking these specific items as failed
         return[]; 
       }
     }
@@ -159,7 +193,14 @@ const LLMService = {
       
       return parsed.map(p => {
         const orig = items.find(i => i.id === p.id);
-        return orig ? { ...orig, title: p.t || orig.title, description: p.d || orig.description } : null;
+        if (!orig) return null;
+
+        // NEW: Decode the HTML placeholders back into real HTML
+        const maps = itemMaps[p.id];
+        const decodedTitle = Utils.HTMLProcessor.decode(p.t || orig.title, maps.tMap);
+        const decodedDesc = Utils.HTMLProcessor.decode(p.d || orig.description, maps.dMap);
+
+        return { ...orig, title: decodedTitle, description: decodedDesc };
       }).filter(Boolean);
     } catch (err) { 
       Utils.logError("LLM_Parse", err);
