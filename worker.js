@@ -217,19 +217,15 @@ const RSSService = {
       const mapKey = `map:${config.name}`;
       const translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
 
-      const untranslated = items.filter(it => !translatedMap[it.id] && !translatedMap[it.id]?.failed);
+      const untranslated = items.filter(it => !translatedMap[it.id]);
 
       const toTranslate =[];
       let currentCharCount = 0;
-      const MAX_CHARS_PER_BATCH = 14000; // Safe limit for 8K tokens/min
+      const MAX_CHARS_PER_BATCH = 14000; 
 
       for (const it of untranslated) {
         const textLength = (it.title || "").length + (it.description || "").length;
-        
-        if (currentCharCount + textLength > MAX_CHARS_PER_BATCH && toTranslate.length > 0) {
-          break;
-        }
-        
+        if (currentCharCount + textLength > MAX_CHARS_PER_BATCH && toTranslate.length > 0) break;
         toTranslate.push(it);
         currentCharCount += textLength;
       }
@@ -248,21 +244,25 @@ const RSSService = {
         const prunedMap = {};
         items.forEach(it => { if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id]; });
         await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
+        
+        console.log(`✅ Successfully updated and cached: ${config.name}`);
+      } else {
+        console.log(`⚡ No new items for ${config.name}. Cache refreshed.`);
       }
 
       const finalItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
       const rss = this.generate(finalItems, config);
       await env.RSS_CACHE.put(`feed:${config.name}`, rss, { expirationTtl: 86400 });
       
-      return true; // Signal that this feed processed successfully
+      return true; 
       
     } catch (e) {
       if (e.message === "RATE_LIMIT_EXCEEDED" || e.message === "SERVER_ERROR") {
         console.warn(`⏳ Groq API unavailable (${e.message}) for ${config.name}. Items left in queue.`);
-        return false; // Signal to the Router to HALT the entire queue
+        return false; 
       } else {
         Utils.logError(`processFeed:${config.name}`, e);
-        return true; // If it's just a weird XML error on one feed, continue to the next feed
+        return true; 
       }
     }
   }
