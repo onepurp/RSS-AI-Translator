@@ -217,9 +217,25 @@ const RSSService = {
       const mapKey = `map:${config.name}`;
       const translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
 
-      const toTranslate = items.filter(it => !translatedMap[it.id]).slice(0, 2);
+      const untranslated = items.filter(it => !translatedMap[it.id] && !translatedMap[it.id]?.failed);
+
+      const toTranslate =[];
+      let currentCharCount = 0;
+      const MAX_CHARS_PER_BATCH = 14000; // Safe limit for 8K tokens/min
+
+      for (const it of untranslated) {
+        const textLength = (it.title || "").length + (it.description || "").length;
+        
+        if (currentCharCount + textLength > MAX_CHARS_PER_BATCH && toTranslate.length > 0) {
+          break;
+        }
+        
+        toTranslate.push(it);
+        currentCharCount += textLength;
+      }
 
       if (toTranslate.length > 0) {
+        console.log(`🌐 Translating ${toTranslate.length} items (${currentCharCount} chars) for ${config.name}...`);
         const translated = await LLMService.translate(toTranslate, config.lang, env, ctx);
         
         translated.forEach(it => { translatedMap[it.id] = it; });
@@ -238,12 +254,15 @@ const RSSService = {
       const rss = this.generate(finalItems, config);
       await env.RSS_CACHE.put(`feed:${config.name}`, rss, { expirationTtl: 86400 });
       
+      return true; // Signal that this feed processed successfully
+      
     } catch (e) {
-      // Queue Pausing for Temporary Groq Outages / Rate Limits
       if (e.message === "RATE_LIMIT_EXCEEDED" || e.message === "SERVER_ERROR") {
-        console.warn(`⏳ Groq API unavailable (${e.message}) for ${config.name}. Items left in queue for next run.`);
+        console.warn(`⏳ Groq API unavailable (${e.message}) for ${config.name}. Items left in queue.`);
+        return false; // Signal to the Router to HALT the entire queue
       } else {
         Utils.logError(`processFeed:${config.name}`, e);
+        return true; // If it's just a weird XML error on one feed, continue to the next feed
       }
     }
   }
@@ -257,7 +276,20 @@ export default {
   async scheduled(event, env, ctx) {
     const feeds = await StorageService.getFeeds(env);
     if (!feeds.length) return;
-    await Promise.allSettled(feeds.map(feed => RSSService.processFeed(feed, env, ctx)));
+    
+    console.log(`🚀 Starting cron job for ${feeds.length} feeds...`);
+    
+    // SEQUENTIAL PROCESSING: Prevents Cloudflare CPU/Memory spikes and respects Groq rate limits
+    for (const feed of feeds) {
+      const shouldContinue = await RSSService.processFeed(feed, env, ctx);
+      
+      if (!shouldContinue) {
+        console.warn("⏸️ Queue paused due to API limits. Will resume on next schedule.");
+        break; 
+      }
+    }
+    
+    console.log("✅ Cron job finished.");
   },
 
   async fetch(request, env, ctx) {
@@ -274,7 +306,6 @@ export default {
         return new Response(getAdminHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
 
-      // API Protection
       if (!isAuthorized) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
 
       if (endpoint === "admin/usage") {
