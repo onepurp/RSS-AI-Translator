@@ -106,12 +106,25 @@ const LLMService = {
       messages:[
         { 
           role: "system", 
-          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: The text contains placeholders like [T0], [T1]. You MUST preserve these placeholders exactly as they appear. Do NOT translate or modify the placeholders. Return ONLY valid JSON. Do NOT wrap in markdown. Use \\n for newlines: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
-          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. 
+CRITICAL INSTRUCTIONS:
+1. The text contains placeholders like [T0], [T1]. You MUST preserve them exactly as they appear.
+2. Return ONLY a valid JSON object.
+3. Escape all double quotes (") inside the translated text as (\\").
+4. Do NOT wrap the JSON in markdown formatting (no \`\`\`json).
+5. Format: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+          /* content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. 
+CRITICAL INSTRUCTIONS:
+1. The text contains placeholders like [T0], [T1]. You MUST preserve them exactly as they appear.
+2. Return ONLY a valid JSON object.
+3. Escape all double quotes (") inside the translated text as (\\").
+4. Do NOT wrap the JSON in markdown formatting (no \`\`\`json).
+5. Format: {"items":[{"id": "...", "t": "...", "d": "..."}]}` 
+*/
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
-      response_format: { type: "json_object" },
+      
       temperature: 0.1
     });
 
@@ -163,6 +176,8 @@ const LLMService = {
       if (startIdx !== -1 && endIdx !== -1) {
         content = content.substring(startIdx, endIdx + 1);
       }
+      
+      content = content.replace(/[\u0000-\u0009\u000B-\u000C\u000E-\u001F]+/g, "");
       
       content = content.replace(/,\s*([\]}])/g, '$1');
 
