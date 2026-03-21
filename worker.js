@@ -18,9 +18,8 @@ const Utils = {
       if (!text) return { encoded: "", map: {} };
       const map = {};
       let counter = 0;
-      // Find all HTML tags and replace them with [__T0__], [__T1__], etc.
       const encoded = text.replace(/<[^>]+>/g, (match) => {
-        const key = `[__T${counter}__]`;
+        const key = `[T${counter}]`;
         map[key] = match;
         counter++;
         return key;
@@ -30,10 +29,10 @@ const Utils = {
     decode: (text, map) => {
       if (!text) return "";
       let decoded = text;
-      // Swap the placeholders back to the original HTML
       for (const [key, value] of Object.entries(map)) {
-        const safeKey = key.replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-        decoded = decoded.replace(new RegExp(safeKey, 'g'), value);
+        const num = key.match(/\d+/)[0];
+        const regex = new RegExp(`\\\\\\[\\s*[Tt]${num}\\s*\\\\\\]|\\[\\s*[Tt]${num}\\s*\\]`, 'g');
+        decoded = decoded.replace(regex, value);
       }
       return decoded;
     }
@@ -91,21 +90,15 @@ const LLMService = {
   async translate(items, lang, env, ctx) {
     if (!items.length) return[];
     
-    // NEW: Store the HTML maps so we can decode them later
     const itemMaps = {};
 
     const cleanedItems = items.map(i => {
-      // Encode the HTML into tiny placeholders to save tokens
       const tEncoded = Utils.HTMLProcessor.encode(i.title.substring(0, 500));
       const dEncoded = Utils.HTMLProcessor.encode(i.description.substring(0, 14000));
       
       itemMaps[i.id] = { tMap: tEncoded.map, dMap: dEncoded.map };
       
-      return { 
-        id: i.id, 
-        t: tEncoded.encoded, 
-        d: dEncoded.encoded 
-      };
+      return { id: i.id, t: tEncoded.encoded, d: dEncoded.encoded };
     });
     
     const payload = JSON.stringify({
@@ -113,9 +106,8 @@ const LLMService = {
       messages:[
         { 
           role: "system", 
-          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
-         // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
-
+          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. CRITICAL: The text contains placeholders like [T0], [T1]. You MUST preserve these placeholders exactly as they appear. Do NOT translate or modify the placeholders. Return ONLY valid JSON. Do NOT wrap in markdown. Use \\n for newlines: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
+          // content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical programming terms in English. CRITICAL: The text contains placeholders like [__T0__], [__T1__]. You MUST preserve these placeholders exactly as they appear, in their exact original positions. Do NOT translate or modify the placeholders. Return ONLY valid JSON: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
         },
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
@@ -148,23 +140,9 @@ const LLMService = {
         console.warn(`⚠️ Groq API (${status}). Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2; 
-      } 
-      
-      else {
+      } else {
         const errText = await res.text();
-        let errorReason = "Unknown Error";
-        switch(status) {
-          case 400: errorReason = "Bad Request - Invalid syntax"; break;
-          case 401: errorReason = "Unauthorized - Invalid API Key"; break;
-          case 403: errorReason = "Forbidden - Permission restricted"; break;
-          case 404: errorReason = "Not Found - Endpoint missing"; break;
-          case 413: errorReason = "Payload Too Large - Reduce text size"; break;
-          case 422: errorReason = "Unprocessable Entity - Semantic error/Hallucination"; break;
-          case 424: errorReason = "Failed Dependency"; break;
-          case 499: errorReason = "Request Cancelled"; break;
-        }
-        
-        Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status} (${errorReason}): ${errText}`));
+        Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status}: ${errText}`));
         return[]; 
       }
     }
@@ -186,7 +164,7 @@ const LLMService = {
         content = content.substring(startIdx, endIdx + 1);
       }
       
-      content = content.replace(/[\u0000-\u001F]+/g, " ");
+      content = content.replace(/,\s*([\]}])/g, '$1');
 
       const parsed = JSON.parse(content).items ||[];
       if (!Array.isArray(parsed)) throw new Error("Invalid JSON array");
@@ -203,7 +181,7 @@ const LLMService = {
       }).filter(Boolean);
     } catch (err) { 
       Utils.logError("LLM_Parse", err);
-      return 
+      return[];
     }
   }
 };
@@ -382,7 +360,11 @@ export default {
 
       if (endpoint.startsWith("admin/cache/") && request.method === "DELETE") {
         const feedToClear = endpoint.split("/").pop();
+        
         await env.RSS_CACHE.delete(`feed:${feedToClear}`);
+        
+        await env.FEED_METADATA.delete(`map:${feedToClear}`); 
+        
         return new Response(JSON.stringify({ success: true }));
       }
 
