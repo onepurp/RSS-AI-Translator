@@ -925,31 +925,50 @@ function getAdminHTML() {
 // 7. PUBLIC LANDING PAGE 
 // ==========================================
 
+// ==========================================
+// 7. PUBLIC LANDING PAGE 
+// ==========================================
+
 function getPublicHTML(feeds, baseUrl) {
   const hasFeeds = feeds && feeds.length > 0;
   
   const feedsList = hasFeeds ? feeds.map(f => {
     const feedUrl = `${baseUrl}/${Utils.escapeHTML(f.name)}`;
+    
     return `
     <div class="feed-card group flex flex-col bg-white dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl border border-gray-200 dark:border-slate-700/50 shadow-sm hover:shadow-xl hover:border-brand-300 dark:hover:border-brand-600 transition-all duration-300" data-search="${Utils.escapeHTML(f.name).toLowerCase()} ${Utils.escapeHTML(f.lang).toLowerCase()}">
+      
       <div class="flex items-start justify-between gap-4 mb-6">
         <div class="min-w-0">
           <div class="flex items-center gap-3 mb-2">
+            <!-- dir="auto" ensures Arabic/Hebrew names align correctly -->
             <h2 dir="auto" class="text-xl font-bold text-gray-900 dark:text-white truncate">${Utils.escapeHTML(f.name)}</h2>
-            <span class="shrink-0 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">${Utils.escapeHTML(f.lang)}</span>
+            <span class="shrink-0 bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-bold px-2.5 py-1 rounded-full border border-brand-200 dark:border-brand-500/20 uppercase tracking-wider">${Utils.escapeHTML(f.lang)}</span>
           </div>
           <p class="text-sm text-gray-500 dark:text-slate-400 truncate" title="${Utils.escapeHTML(f.url)}">Source: ${Utils.escapeHTML(f.url)}</p>
         </div>
+        <div class="shrink-0 bg-orange-50 dark:bg-orange-500/10 p-3 rounded-xl text-orange-500 dark:text-orange-400 border border-orange-100 dark:border-orange-500/20">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 11.08c5.8 0 10.5 4.7 10.5 10.5h-3.2c0-4.03-3.27-7.3-7.3-7.3v-3.2M4 4.5c9.44 0 17.1 7.66 17.1 17.1h-3.2C17.9 13.93 11.67 7.7 4 7.7V4.5z"/></svg>
+        </div>
       </div>
+
       <div class="mt-auto pt-5 border-t border-gray-100 dark:border-slate-700/50">
+        <!-- Copy URL Button (Full Width) -->
         <button onclick="copyToClipboard('${feedUrl}', this)" class="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 dark:bg-slate-900 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 px-4 py-3 rounded-xl text-sm font-semibold transition-colors border border-gray-200 dark:border-slate-600">
+          <svg class="icon-copy w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          <svg class="icon-check w-4 h-4 text-emerald-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
           <span class="btn-text">Copy RSS Link</span>
         </button>
       </div>
-    </div>`;
+    </div>
+    `;
   }).join('') : `
     <div class="col-span-full text-center py-20 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm rounded-3xl border border-dashed border-gray-300 dark:border-slate-700">
+      <div class="bg-gray-100 dark:bg-slate-800 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+        <svg class="w-10 h-10 text-gray-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path></svg>
+      </div>
       <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">No Feeds Available</h3>
+      <p class="text-gray-500 dark:text-slate-400 max-w-md mx-auto text-lg">The administrator hasn't configured any translated RSS feeds yet. Check back later!</p>
     </div>
   `;
 
@@ -961,27 +980,123 @@ function getPublicHTML(feeds, baseUrl) {
   <title>Translated RSS Feeds</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { darkMode: 'media', theme: { extend: { colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' } } } } }
+    tailwind.config = {
+      darkMode: 'media',
+      theme: { extend: { colors: { brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' } } } }
+    }
   </script>
-  <style>.bg-grid-pattern { background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px); background-size: 24px 24px; } @media (prefers-color-scheme: dark) { .bg-grid-pattern { background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px); } }</style>
+  <style>
+    /* Premium Background Pattern */
+    .bg-grid-pattern {
+      background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    @media (prefers-color-scheme: dark) {
+      .bg-grid-pattern { background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px); }
+    }
+  </style>
 </head>
-<body class="bg-gray-50 text-gray-900 dark:bg-[#0B1120] dark:text-slate-50 min-h-screen relative">
+<body class="bg-gray-50 text-gray-900 dark:bg-[#0B1120] dark:text-slate-50 min-h-screen selection:bg-brand-500 selection:text-white relative">
+  
+  <!-- Background Grid & Glow -->
   <div class="absolute inset-0 bg-grid-pattern pointer-events-none z-0"></div>
-  <div class="absolute top-4 right-4 z-20">
-    <a href="/admin" class="px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border border-gray-200 dark:border-slate-700 rounded-full text-sm font-medium transition-all shadow-sm">Admin Login</a>
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-brand-500/10 dark:bg-brand-500/20 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
+  <!-- Admin Login Button (Top Right) -->
+  <div class="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+    <a href="/admin" class="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-800/50 backdrop-blur-md border border-gray-200 dark:border-slate-700 rounded-full text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-brand-600 dark:hover:text-brand-400 transition-all shadow-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      Admin Login
+    </a>
   </div>
+
   <div class="relative z-10 max-w-5xl mx-auto p-6 py-16 sm:py-24">
+    
     <header class="text-center mb-16 mt-8 sm:mt-0">
-      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">AI Translated Feeds</h1>
+      <div class="inline-flex items-center justify-center p-4 bg-white dark:bg-slate-800/50 backdrop-blur-md rounded-3xl shadow-sm border border-gray-200 dark:border-slate-700/50 mb-8">
+        <svg class="w-10 h-10 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path></svg>
+      </div>
+      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6 text-gray-900 dark:text-white">AI Translated Feeds</h1>
+      <p class="text-lg sm:text-xl text-gray-600 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed">Subscribe to your favorite content, automatically translated into your preferred language using advanced AI.</p>
     </header>
-    <main class="grid grid-cols-1 md:grid-cols-2 gap-6">${feedsList}</main>
+
+    ${hasFeeds ? `
+    <!-- Live Search Bar -->
+    <div class="max-w-md mx-auto mb-12 relative">
+      <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      </div>
+      <input type="text" id="searchInput" placeholder="Search feeds or languages..." class="w-full pl-11 pr-4 py-3.5 bg-white dark:bg-slate-800/80 backdrop-blur-md border border-gray-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all shadow-sm dark:text-white placeholder-gray-400 dark:placeholder-slate-500">
+    </div>
+    ` : ''}
+
+    <main id="feedsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      ${feedsList}
+    </main>
+
+    <footer class="mt-24 text-center border-t border-gray-200 dark:border-slate-800/50 pt-10">
+      <p class="text-sm text-gray-500 dark:text-slate-500 flex items-center justify-center gap-1.5">
+        Powered by 
+        <a href="https://github.com/onepurp/RSS-AI-Translator" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 transition-colors inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+          RSS AI Translator
+        </a>
+      </p>
+    </footer>
   </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-6 py-3 rounded-full shadow-2xl font-medium text-sm flex items-center gap-2 transition-all duration-300 opacity-0 translate-y-8 pointer-events-none z-50">
+    <svg class="w-5 h-5 text-emerald-400 dark:text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    Link copied to clipboard!
+  </div>
+
   <script>
+    // Copy to Clipboard Logic with Micro-interactions
     function copyToClipboard(text, btn) {
       navigator.clipboard.writeText(text).then(() => {
+        // Button UI Update
+        const iconCopy = btn.querySelector('.icon-copy');
+        const iconCheck = btn.querySelector('.icon-check');
         const btnText = btn.querySelector('.btn-text');
+        
+        iconCopy.classList.add('hidden');
+        iconCheck.classList.remove('hidden');
         btnText.innerText = 'Copied!';
-        setTimeout(() => { btnText.innerText = 'Copy RSS Link'; }, 2000);
+        btn.classList.add('border-emerald-500', 'text-emerald-600', 'dark:text-emerald-400');
+        
+        // Show Global Toast
+        const toast = document.getElementById('toast');
+        toast.classList.remove('opacity-0', 'translate-y-8');
+        
+        setTimeout(() => {
+          // Reset Button
+          iconCopy.classList.remove('hidden');
+          iconCheck.classList.add('hidden');
+          btnText.innerText = 'Copy RSS Link';
+          btn.classList.remove('border-emerald-500', 'text-emerald-600', 'dark:text-emerald-400');
+          
+          // Hide Toast
+          toast.classList.add('opacity-0', 'translate-y-8');
+        }, 2500);
+      });
+    }
+
+    // Live Search Filtering
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        const term = e.target.value.toLowerCase();
+        const cards = document.querySelectorAll('.feed-card');
+        
+        cards.forEach(card => {
+          const searchableText = card.getAttribute('data-search');
+          if (searchableText.includes(term)) {
+            card.style.display = 'flex';
+          } else {
+            card.style.display = 'none';
+          }
+        });
       });
     }
   </script>
