@@ -104,13 +104,14 @@ const StorageService = {
   }
 };
 
+
 // ==========================================
 // 3. LLM SERVICE
 // ==========================================
 
 const LLMService = {
   async translate(items, lang, env, ctx) {
-    if (!items.length) return [];
+    if (!items.length) return[];
     
     const itemMaps = {};
 
@@ -137,18 +138,29 @@ CRITICAL INSTRUCTIONS:
         { role: "user", content: JSON.stringify(cleanedItems) }
       ],
       temperature: 0.1,
-      max_tokens: 3000 // Safe buffer preventing truncation while avoiding 413s
+      // OPTIMIZED: Lowered to 1200. Reduces "Requested Tokens" to ~1700 per batch.
+      // This allows you to translate 4 batches per minute without hitting the 8K limit!
+      max_tokens: 1200 
     });
 
     let data = null;
     let delay = 2000; 
 
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
-        body: payload
-      });
+      let res;
+      try {
+        res = await Utils.safeFetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
+          body: payload
+        }, 45000);
+      } catch (fetchErr) {
+        LogService.warn(`⚠️ Groq API connection failed: ${fetchErr.message}. Retrying...`);
+        if (attempt === 3) throw new Error("SERVER_ERROR");
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+        continue; 
+      }
 
       const status = res.status;
 
@@ -158,12 +170,16 @@ CRITICAL INSTRUCTIONS:
       }
       
       if (status === 429 || status === 498) {
+        // NEW: Fetch and print the exact rate-limit error message to the Live Terminal
+        const errText = await res.text();
+        LogService.warn(`⚠️ Groq API Rate Limit (${status}): ${errText}`);
+        
         if (attempt === 3) throw new Error("RATE_LIMIT_EXCEEDED");
-        LogService.warn(`⚠️ API Rate Limit (${status}). Sleeping 60 seconds...`);
+        console.warn(`⚠️ Sleeping 60 seconds...`);
         await new Promise(resolve => setTimeout(resolve, 60000));
       } else if (status >= 500) {
         if (attempt === 3) throw new Error("SERVER_ERROR");
-        LogService.warn(`⚠️ Server Error (${status}). Retrying in ${delay}ms...`);
+        LogService.warn(`⚠️ Groq Server Error (${status}). Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         delay *= 2; 
       } else if (status === 413) {
@@ -171,11 +187,11 @@ CRITICAL INSTRUCTIONS:
       } else {
         const errText = await res.text();
         Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status}: ${errText}`));
-        return []; 
+        return[]; 
       }
     }
 
-    if (!data?.choices?.[0]) return [];
+    if (!data?.choices?.[0]) return[];
 
     if (data.usage) {
       ctx ? ctx.waitUntil(StorageService.trackUsage(env, data.usage)) : await StorageService.trackUsage(env, data.usage);
@@ -183,7 +199,6 @@ CRITICAL INSTRUCTIONS:
 
     try {
       let content = data.choices[0].message.content;
-      
       content = content.replace(/```json/gi, '').replace(/```/g, '').trim();
       const startIdx = content.indexOf('{');
       if (startIdx !== -1) content = content.substring(startIdx);
@@ -191,7 +206,6 @@ CRITICAL INSTRUCTIONS:
       content = content.replace(/,\s*([\]}])/g, '$1');
 
       let parsed = null;
-      
       try {
         parsed = JSON.parse(content).items || [];
       } catch (err) {
@@ -229,10 +243,11 @@ CRITICAL INSTRUCTIONS:
     } catch (err) { 
       if (err.message === "OUTPUT_TRUNCATED") throw err;
       Utils.logError("LLM_Parse", err);
-      return [];
+      return[];
     }
   }
 };
+
 
 // ==========================================
 // 4. RSS SERVICE
