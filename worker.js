@@ -175,7 +175,7 @@ const LLMService = {
         messages:[
           { 
             role: "system", 
-            content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. 
+            content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical and programming terms in English. 
 CRITICAL INSTRUCTIONS:
 1. The text contains placeholders like [T0]. Preserve them exactly.
 2. Return ONLY a valid JSON object. Do NOT wrap in markdown.
