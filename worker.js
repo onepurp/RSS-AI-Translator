@@ -2,7 +2,6 @@
 // 1. UTILITIES, SECURITY & LOGGING
 // ==========================================
 
-// NEW: Global Logging Service to stream logs to the Admin Dashboard
 const LogService = {
   logs: [],
   info(msg) { this.log('INFO', msg); },
@@ -14,14 +13,16 @@ const LogService = {
     else if(level === 'WARN') console.warn(msg);
     else console.log(msg);
   },
+  // CRITICAL FIX: Made save() safe for concurrent calls and flushes memory instantly
   async save(env) {
     if (!this.logs.length) return;
     try {
+      const logsToSave = [...this.logs];
+      this.logs = []; // Clear immediately to prevent duplicates
       const existing = await env.FEED_METADATA.get("system:logs", "json") || [];
-      const updated = [...existing, ...this.logs].slice(-200); // Keep last 200 logs to prevent bloat
+      const updated = [...existing, ...logsToSave].slice(-200); 
       await env.FEED_METADATA.put("system:logs", JSON.stringify(updated));
-      this.logs = [];
-    } catch (e) { console.error("Failed to save logs", e); }
+    } catch (e) { console.error("Failed to save logs to KV", e); }
   }
 };
 
@@ -35,12 +36,28 @@ const Utils = {
     LogService.error(`[${context}] ${error.message}`);
   },
 
+  safeFetch: async (url, options = {}, timeoutMs = 15000) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeoutMs / 1000} seconds`);
+      }
+      throw error;
+    }
+  },
+
   HTMLProcessor: {
     encode: (text) => {
       if (!text) return { encoded: "", map: {} };
       const map = {};
       let counter = 0;
-      const encoded = text.replace(/<[^>]+>/g, (match) => {
+      const encoded = text.replace(/<[^>]+>|https?:\/\/[^\s<"']+/gi, (match) => {
         const key = `[T${counter}]`;
         map[key] = match;
         counter++;
@@ -74,9 +91,14 @@ const StorageService = {
     if (memoryCache.feeds && (now - memoryCache.lastFetch < CACHE_TTL_MS)) {
       return memoryCache.feeds;
     }
-    const feeds = await env.FEED_METADATA.get("config:feeds", "json") || [];
-    memoryCache = { feeds, lastFetch: now };
-    return feeds;
+    try {
+      const feeds = await env.FEED_METADATA.get("config:feeds", "json") || [];
+      memoryCache = { feeds, lastFetch: now };
+      return feeds;
+    } catch (e) {
+      LogService.error("CRITICAL: Failed to parse 'config:feeds' from KV. Data might be corrupted.");
+      return [];
+    }
   },
 
   async saveFeeds(env, feeds) {
@@ -105,93 +127,130 @@ const StorageService = {
 };
 
 
+
 // ==========================================
-// 3. LLM SERVICE
+// 3. LLM SERVICE (Multi-Model Fallback)
 // ==========================================
 
 const LLMService = {
+  // NEW: Memory cache to remember which models ran out of daily tokens
+  exhaustedModels: new Set(),
+
   async translate(items, lang, env, ctx) {
-    if (!items.length) return[];
+    if (!items.length) return [];
     
     const itemMaps = {};
 
-    const cleanedItems = items.map(i => {
-      const tEncoded = Utils.HTMLProcessor.encode(i.title.substring(0, 500));
-      const dEncoded = Utils.HTMLProcessor.encode(i.description.substring(0, 14000));
-      itemMaps[i.id] = { tMap: tEncoded.map, dMap: dEncoded.map };
-      return { id: i.id, t: tEncoded.encoded, d: dEncoded.encoded };
+    const cleanedItems = items.map((i, idx) => {
+      const tData = Utils.HTMLProcessor.encode(i.title || "");
+      const dData = Utils.HTMLProcessor.encode(i.description || "");
+      
+      let tSafe = tData.encoded;
+      let dSafe = dData.encoded;
+
+      if (tSafe.length > 400) tSafe = tSafe.substring(0, 400).replace(/\[[T\d]*$/, '') + '...';
+      if (dSafe.length > 2500) dSafe = dSafe.substring(0, 2500).replace(/\[[T\d]*$/, '') + '...';
+      
+      itemMaps[idx] = { id: i.id, tMap: tData.map, dMap: dData.map };
+      return { i: idx, t: tSafe, d: dSafe };
     });
     
-    const payload = JSON.stringify({
-      model: "openai/gpt-oss-120b", 
-      messages:[
-        { 
-          role: "system", 
-          content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. 
-CRITICAL INSTRUCTIONS:
-1. The text contains placeholders like [T0], [T1]. You MUST preserve them exactly as they appear.
-2. Return ONLY a valid JSON object.
-3. Escape all double quotes (") inside the translated text as (\\").
-4. Do NOT wrap the JSON in markdown formatting (no \`\`\`json).
-5. Format: {"items":[{"id": "...", "t": "...", "d": "..."}]}`
-        },
-        { role: "user", content: JSON.stringify(cleanedItems) }
-      ],
-      temperature: 0.1,
-      // OPTIMIZED: Lowered to 1200. Reduces "Requested Tokens" to ~1700 per batch.
-      // This allows you to translate 4 batches per minute without hitting the 8K limit!
-      max_tokens: 1200 
-    });
+    const MODELS = [
+      "openai/gpt-oss-120b",
+      "meta-llama/llama-4-scout-17b-16e-instruct"
+    ];
 
     let data = null;
-    let delay = 2000; 
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      let res;
-      try {
-        res = await Utils.safeFetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
-          body: payload
-        }, 45000);
-      } catch (fetchErr) {
-        LogService.warn(`⚠️ Groq API connection failed: ${fetchErr.message}. Retrying...`);
-        if (attempt === 3) throw new Error("SERVER_ERROR");
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
-        continue; 
+    for (const model of MODELS) {
+      // NEW: If this model hit a daily limit earlier in the run, skip it instantly!
+      if (this.exhaustedModels.has(model)) {
+        continue;
       }
 
-      const status = res.status;
-
-      if (res.ok) { 
-        data = await res.json(); 
-        break; 
-      }
+      LogService.info(`🧠 Attempting translation with model: ${model}`);
       
-      if (status === 429 || status === 498) {
-        // NEW: Fetch and print the exact rate-limit error message to the Live Terminal
-        const errText = await res.text();
-        LogService.warn(`⚠️ Groq API Rate Limit (${status}): ${errText}`);
+      const payload = JSON.stringify({
+        model: model, 
+        messages:[
+          { 
+            role: "system", 
+            content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. 
+CRITICAL INSTRUCTIONS:
+1. The text contains placeholders like [T0]. Preserve them exactly.
+2. Return ONLY a valid JSON object. Do NOT wrap in markdown.
+3. Keep the integer index "i" exactly as provided.
+4. Escape all double quotes (") inside translated text as (\\").
+5. Format: {"items":[{"i": 0, "t": "...", "d": "..."}]}`
+          },
+          { role: "user", content: JSON.stringify(cleanedItems) }
+        ],
+        temperature: 0.1,
+        max_tokens: 3500 
+      });
+
+      let delay = 2000; 
+      let modelExhausted = false;
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        let res;
+        try {
+          res = await Utils.safeFetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${env.GROQ_API_KEY}`, "Content-Type": "application/json" },
+            body: payload
+          }, 45000);
+        } catch (fetchErr) {
+          LogService.warn(`⚠️ API connection failed: ${fetchErr.message}. Retrying...`);
+          if (attempt === 3) { modelExhausted = true; break; }
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+          continue; 
+        }
+
+        const status = res.status;
+
+        if (res.ok) { 
+          data = await res.json(); 
+          break; 
+        }
         
-        if (attempt === 3) throw new Error("RATE_LIMIT_EXCEEDED");
-        console.warn(`⚠️ Sleeping 60 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 60000));
-      } else if (status >= 500) {
-        if (attempt === 3) throw new Error("SERVER_ERROR");
-        LogService.warn(`⚠️ Groq Server Error (${status}). Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; 
-      } else if (status === 413) {
-        throw new Error("PAYLOAD_TOO_LARGE");
-      } else {
-        const errText = await res.text();
-        Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status}: ${errText}`));
-        return[]; 
+        if (status === 429 || status === 498) {
+          const errText = await res.text();
+          
+          if (errText.includes("tokens per day (TPD)")) {
+            LogService.warn(`🛑 Daily Limit hit for ${model}. Blacklisting model for this session...`);
+            this.exhaustedModels.add(model); // Blacklist it so we don't try it on the next batch!
+            modelExhausted = true;
+            break; 
+          }
+          
+          LogService.warn(`⚠️ API Rate Limit (${status}): ${errText}`);
+          if (attempt === 3) { modelExhausted = true; break; }
+          
+          LogService.warn(`⚠️ Sleeping 60 seconds to refill token bucket...`);
+          await LogService.save(env); 
+          await new Promise(resolve => setTimeout(resolve, 60000));
+          
+        } else if (status >= 500) {
+          if (attempt === 3) { modelExhausted = true; break; }
+          LogService.warn(`⚠️ Server Error (${status}). Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; 
+        } else if (status === 413) {
+          throw new Error("PAYLOAD_TOO_LARGE");
+        } else {
+          const errText = await res.text();
+          Utils.logError("Groq_API_Fatal", new Error(`HTTP ${status}: ${errText}`));
+          modelExhausted = true;
+          break; 
+        }
       }
+
+      if (data) break; 
     }
 
-    if (!data?.choices?.[0]) return[];
+    if (!data?.choices?.[0]) throw new Error("RATE_LIMIT_EXCEEDED");
 
     if (data.usage) {
       ctx ? ctx.waitUntil(StorageService.trackUsage(env, data.usage)) : await StorageService.trackUsage(env, data.usage);
@@ -206,25 +265,33 @@ CRITICAL INSTRUCTIONS:
       content = content.replace(/,\s*([\]}])/g, '$1');
 
       let parsed = null;
+      
       try {
         parsed = JSON.parse(content).items || [];
       } catch (err) {
-        LogService.warn("⚠️ JSON Parse failed. Output likely truncated. Engaging Smart Salvage...");
         let valid = false;
         let searchIdx = content.length;
-
         while (searchIdx > 10) {
           const lastBracket = content.lastIndexOf('}', searchIdx);
           if (lastBracket === -1) break;
-          
           const testStr = content.substring(0, lastBracket + 1) + ']}';
           try {
             parsed = JSON.parse(testStr).items || [];
             valid = true;
             LogService.info(`✅ Salvage successful! Recovered ${parsed.length} items.`);
             break;
-          } catch (e) {
-            searchIdx = lastBracket - 1; 
+          } catch (e) { searchIdx = lastBracket - 1; }
+        }
+
+        if (!valid && items.length === 1) {
+          const lastQuote = content.lastIndexOf('"');
+          if (lastQuote > 10) {
+            const salvagedStr = content.substring(0, lastQuote) + '"]}]}';
+            try {
+              parsed = JSON.parse(salvagedStr).items || [];
+              valid = true;
+              LogService.info(`✅ Brutal salvage successful! Item recovered.`);
+            } catch(e) {}
           }
         }
         if (!valid) throw new Error("OUTPUT_TRUNCATED");
@@ -233,21 +300,25 @@ CRITICAL INSTRUCTIONS:
       if (!Array.isArray(parsed)) throw new Error("Invalid JSON array");
       
       return parsed.map(p => {
-        const orig = items.find(i => i.id === p.id);
+        const mappedIdx = parseInt(p.i, 10);
+        const mappedData = itemMaps[mappedIdx];
+        if (!mappedData) return null;
+        
+        const orig = items.find(i => i.id === mappedData.id);
         if (!orig) return null;
-        const maps = itemMaps[p.id];
-        const decodedTitle = Utils.HTMLProcessor.decode(p.t || orig.title, maps.tMap);
-        const decodedDesc = Utils.HTMLProcessor.decode(p.d || orig.description, maps.dMap);
+        
+        const decodedTitle = Utils.HTMLProcessor.decode(p.t || orig.title, mappedData.tMap);
+        const decodedDesc = Utils.HTMLProcessor.decode(p.d || orig.description, mappedData.dMap);
+        
         return { ...orig, title: decodedTitle, description: decodedDesc };
       }).filter(Boolean);
     } catch (err) { 
       if (err.message === "OUTPUT_TRUNCATED") throw err;
       Utils.logError("LLM_Parse", err);
-      return[];
+      return [];
     }
   }
 };
-
 
 // ==========================================
 // 4. RSS SERVICE
@@ -295,7 +366,9 @@ const RSSService = {
 
     try {
       LogService.info(`📡 [${config.name}] Fetching RSS source...`);
-      const res = await fetch(config.url);
+      await LogService.save(env); 
+      
+      const res = await Utils.safeFetch(config.url, {}, 15000);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       
       const xml = await res.text();
@@ -305,12 +378,23 @@ const RSSService = {
       const mapKey = `map:${config.name}`;
       translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
 
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      let didPruneOldData = false;
+      for (const [key, value] of Object.entries(translatedMap)) {
+        if (value._ts && (now - value._ts > THIRTY_DAYS_MS)) {
+          delete translatedMap[key];
+          didPruneOldData = true;
+        }
+      }
+      if (didPruneOldData) {
+        LogService.info(`🧹 [${config.name}] Swept old items (> 30 days) from database.`);
+      }
+
       let untranslated = items.filter(it => !translatedMap[it.id]);
       
-      // NEW: Immediately generate and cache the base RSS feed using whatever we currently have.
-      // This instantly eliminates 404 errors for the user while we process new batches.
       const initialItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
-      await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(initialItems, config), { expirationTtl: 86400 });
+      await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(initialItems, config), { expirationTtl: 2592000 }); 
 
       if (untranslated.length === 0) {
         LogService.info(`⚡ [${config.name}] No new items. Cache updated.`);
@@ -319,12 +403,14 @@ const RSSService = {
 
       let currentMaxBatchChars = 2000; 
 
+      // 100% FULL SPEED QUEUE DRAIN
       while (untranslated.length > 0) {
         const toTranslate = [];
         let currentCharCount = 0;
 
         for (const it of untranslated) {
-          const textLength = (it.title || "").length + (it.description || "").length;
+          let textLength = (it.title || "").length + (it.description || "").length;
+          if (textLength > 3000) textLength = 3000; 
           
           if (textLength > currentMaxBatchChars && toTranslate.length === 0) {
             toTranslate.push(it);
@@ -338,24 +424,24 @@ const RSSService = {
 
         if (toTranslate.length > 0) {
           LogService.info(`🌐 [${config.name}] Translating batch of ${toTranslate.length} items (${currentCharCount} chars)...`);
+          await LogService.save(env); 
           
           try {
             const translated = await LLMService.translate(toTranslate, config.lang, env, ctx);
             
             if (translated && translated.length > 0) {
-              translated.forEach(it => { translatedMap[it.id] = it; });
+              translated.forEach(it => { translatedMap[it.id] = { ...it, _ts: Date.now() }; });
               currentMaxBatchChars = 2000; 
               
               const processedIds = new Set(Object.keys(translatedMap));
               untranslated = untranslated.filter(it => !processedIds.has(it.id));
               
-              // NEW: Incremental Real-Time Save. Updates the XML feed instantly after every successful batch!
               const prunedMap = {};
               items.forEach(it => { if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id]; });
               await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
 
               const interimItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
-              await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(interimItems, config), { expirationTtl: 86400 });
+              await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(interimItems, config), { expirationTtl: 2592000 });
               LogService.info(`💾 [${config.name}] Incremental cache updated.`);
               
             } else {
@@ -364,19 +450,18 @@ const RSSService = {
             }
           } catch (e) {
             if (e.message === "RATE_LIMIT_EXCEEDED" || e.message === "SERVER_ERROR") {
-              LogService.warn(`⏳ [${config.name}] API Limit hit. Preserving completed translations...`);
+              LogService.warn(`⏳ [${config.name}] Global Limit Exhausted. Preserving completed translations...`);
               hitFatalLimit = true;
               break; 
             }
             if (e.message === "PAYLOAD_TOO_LARGE" || e.message === "OUTPUT_TRUNCATED") {
-              LogService.warn(`⚠️ [${config.name}] Limit breached. Shrinking batch size and retrying...`);
+              LogService.warn(`⚠️ [${config.name}] Payload Limit breached. Shrinking batch size and retrying...`);
               currentMaxBatchChars = Math.floor(currentMaxBatchChars / 2);
               
               if (toTranslate.length === 1) {
                 LogService.error(`❌ [${config.name}] Item too large. Marking as failed.`);
-                translatedMap[toTranslate[0].id] = { failed: true, ...toTranslate[0] };
+                translatedMap[toTranslate[0].id] = { failed: true, ...toTranslate[0], _ts: Date.now() };
                 untranslated = untranslated.filter(it => it.id !== toTranslate[0].id);
-                // Save the failure state so we don't get stuck forever
                 await env.FEED_METADATA.put(mapKey, JSON.stringify(translatedMap), { expirationTtl: 2592000 });
               }
               continue; 
@@ -391,7 +476,7 @@ const RSSService = {
           break;
         }
 
-        // DELETED: The artificial 20-second sleep. We are now running at 100% full speed!
+        // DELIBERATELY DELETED: The 20-second sleep is officially GONE. Full speed ahead!
       }
     } catch (e) {
       Utils.logError(`processFeed:${config.name}`, e);
@@ -402,28 +487,38 @@ const RSSService = {
   }
 };
 
+
 // ==========================================
 // 5. ROUTER & WORKER ENTRY
 // ==========================================
 
 export default {
   async scheduled(event, env, ctx) {
-    const startTime = Date.now(); 
-    LogService.info(`🚀 Starting cron job...`);
-    const feeds = await StorageService.getFeeds(env);
-    
-    if (feeds.length > 0) {
-      for (const feed of feeds) {
-        const shouldContinue = await RSSService.processFeed(feed, env, ctx, startTime);
-        if (!shouldContinue) {
-          LogService.warn("⏸️ Queue paused globally due to API limits.");
-          break; 
+    try {
+      const startTime = Date.now(); 
+      LogService.info(`🚀 Starting cron job...`);
+      await LogService.save(env); // Force flush initial log
+      
+      const feeds = await StorageService.getFeeds(env);
+      
+      if (feeds.length > 0) {
+        for (const feed of feeds) {
+          const shouldContinue = await RSSService.processFeed(feed, env, ctx, startTime);
+          await LogService.save(env); // Flush logs after every feed completes
+          if (!shouldContinue) {
+            LogService.warn("⏸️ Queue paused globally due to API limits.");
+            break; 
+          }
         }
+      } else {
+        LogService.warn("⚠️ No feeds configured.");
       }
+      LogService.info("🏁 Cron job finished.");
+    } catch (err) {
+      LogService.error(`CRITICAL CRON ERROR: ${err.message}`);
+    } finally {
+      await LogService.save(env); // Guarantee final flush even if worker crashes
     }
-    
-    LogService.info("🏁 Cron job finished.");
-    ctx.waitUntil(LogService.save(env)); // Flush logs to DB
   },
 
   async fetch(request, env, ctx) {
@@ -444,7 +539,6 @@ export default {
           return new Response(JSON.stringify({ month: usage.key, tokens: usage.data }), { headers: { "Content-Type": "application/json" } });
         }
 
-        // NEW: Endpoint to fetch the live terminal logs
         if (endpoint === "admin/logs") {
           if (request.method === "GET") {
             const logs = await env.FEED_METADATA.get("system:logs", "json") || [];
@@ -499,14 +593,12 @@ export default {
       
       if (!cached) {
         const feedObj = feeds.find(f => f.name === feedName);
-        // Trigger background translation, but it will instantly save an untranslated XML first so user sees it right away!
         ctx.waitUntil((async () => {
           LogService.info(`🚀 Background sync started for missing cache: ${feedName}`);
           await RSSService.processFeed(feedObj, env, ctx, Date.now());
           await LogService.save(env);
         })());
         
-        // Brief 1-second delay so the instant-save above has time to write before we bounce the user
         await new Promise(r => setTimeout(r, 1000));
         const instantCache = await env.RSS_CACHE.get(`feed:${feedName}`);
         if (instantCache) return new Response(instantCache, { headers: { "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "public, max-age=30" } });
@@ -920,10 +1012,6 @@ function getAdminHTML() {
 </body>
 </html>`;
 }
-
-// ==========================================
-// 7. PUBLIC LANDING PAGE 
-// ==========================================
 
 // ==========================================
 // 7. PUBLIC LANDING PAGE 
