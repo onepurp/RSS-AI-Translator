@@ -320,6 +320,12 @@ CRITICAL INSTRUCTIONS:
 // 4. RSS SERVICE
 // ==========================================
 
+
+
+// ==========================================
+// 4. RSS SERVICE
+// ==========================================
+
 const RSSService = {
   parse(xml) {
     const items = [];
@@ -364,7 +370,15 @@ const RSSService = {
       LogService.info(`📡 [${config.name}] Fetching RSS source...`);
       await LogService.save(env); 
       
-      const res = await Utils.safeFetch(config.url, {}, 15000);
+      // CRITICAL FIX 1: Disguise as Google Chrome & increase timeout to 25 seconds
+      // This stops RSSHubs/Telegram scrapers from blocking or throttling the request
+      const res = await Utils.safeFetch(config.url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/rss+xml, application/xml, text/xml, */*"
+        }
+      }, 25000);
+      
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       
       const xml = await res.text();
@@ -380,27 +394,24 @@ const RSSService = {
       let didPruneOldData = false;
 
       for (const [key, value] of Object.entries(translatedMap)) {
-        // Garbage collect data older than 30 days
         if (value._ts && (now - value._ts > THIRTY_DAYS_MS)) {
           delete translatedMap[key];
           didPruneOldData = true;
         }
-        // NEW: If an item has been marked 'failed: true' for over 3 days, delete it entirely.
-        // It is considered "impossible" and we will stop wasting tokens trying to translate it.
         else if (value.failed && value._failedAt && (now - value._failedAt > THREE_DAYS_MS)) {
           delete translatedMap[key];
           didPruneOldData = true;
         }
       }
       if (didPruneOldData) {
-        LogService.info(`🧹 [${config.name}] Swept old/impossible items from database.`);
+        LogService.info(`🧹 [${config.name}] Swept old items from database.`);
       }
 
-      // Filter out items that are already translated, or items that are currently in the 3-day failure timeout
       let untranslated = items.filter(it => !translatedMap[it.id] || (translatedMap[it.id].failed === true && !translatedMap[it.id]._failedAt));
       
-      // EXCLUSION FIX: Generate the initial cached feed, but strictly OMIT any items that haven't been translated yet.
-      const initialItems = items.slice(0, 15).filter(it => translatedMap[it.id] && !translatedMap[it.id].failed).map(it => translatedMap[it.id]);
+      // CRITICAL FIX 2: Graceful Fallback
+      // If an item hasn't been translated yet (or if it permanently failed), we output the original `it`!
+      const initialItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
       await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(initialItems, config), { expirationTtl: 2592000 }); 
 
       if (untranslated.length === 0) {
@@ -408,7 +419,7 @@ const RSSService = {
         return true;
       }
 
-      let currentMaxBatchChars = 1800; // Smallest safe chunk
+      let currentMaxBatchChars = 1800; 
 
       while (untranslated.length > 0) {
         const toTranslate = [];
@@ -446,8 +457,8 @@ const RSSService = {
               items.forEach(it => { if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id]; });
               await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
 
-              // EXCLUSION FIX: Again, strictly filter out untranslated items before caching
-              const interimItems = items.slice(0, 15).filter(it => translatedMap[it.id] && !translatedMap[it.id].failed).map(it => translatedMap[it.id]);
+              // FALLBACK FIX: Includes untranslated items in the live cache updates
+              const interimItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
               await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(interimItems, config), { expirationTtl: 2592000 });
               LogService.info(`💾 [${config.name}] Incremental cache updated.`);
               
@@ -466,8 +477,7 @@ const RSSService = {
               currentMaxBatchChars = Math.floor(currentMaxBatchChars / 2);
               
               if (toTranslate.length === 1) {
-                LogService.error(`❌ [${config.name}] Item too large/complex for all models. Putting in 3-day penalty box.`);
-                // NEW: Mark as failed AND add a timestamp so we don't try it again for 3 days
+                LogService.error(`❌ [${config.name}] Item too complex. Putting in 3-day penalty box.`);
                 translatedMap[toTranslate[0].id] = { failed: true, _failedAt: Date.now(), ...toTranslate[0] };
                 untranslated = untranslated.filter(it => it.id !== toTranslate[0].id);
                 await env.FEED_METADATA.put(mapKey, JSON.stringify(translatedMap), { expirationTtl: 2592000 });
@@ -492,6 +502,7 @@ const RSSService = {
     return !hitFatalLimit; 
   }
 };
+
 
 
 // ==========================================
