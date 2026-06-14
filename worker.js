@@ -133,7 +133,6 @@ const StorageService = {
 // ==========================================
 
 const LLMService = {
-  // NEW: Memory cache to remember which models ran out of daily tokens
   exhaustedModels: new Set(),
 
   async translate(items, lang, env, ctx) {
@@ -148,34 +147,32 @@ const LLMService = {
       let tSafe = tData.encoded;
       let dSafe = dData.encoded;
 
+      // Ensure the absolute size of the text is tiny to accommodate small fallback models
       if (tSafe.length > 400) tSafe = tSafe.substring(0, 400).replace(/\[[T\d]*$/, '') + '...';
-      if (dSafe.length > 2500) dSafe = dSafe.substring(0, 2500).replace(/\[[T\d]*$/, '') + '...';
+      if (dSafe.length > 2000) dSafe = dSafe.substring(0, 2000).replace(/\[[T\d]*$/, '') + '...';
       
       itemMaps[idx] = { id: i.id, tMap: tData.map, dMap: dData.map };
       return { i: idx, t: tSafe, d: dSafe };
     });
     
     const MODELS = [
-      "openai/gpt-oss-120b",
-      "meta-llama/llama-4-scout-17b-16e-instruct"
+      { name: "openai/gpt-oss-120b", tokens: 2500 },
+      { name: "meta-llama/llama-4-scout-17b-16e-instruct", tokens: 1500 } // Smaller request to avoid 413s on strict tiers
     ];
 
     let data = null;
 
-    for (const model of MODELS) {
-      // NEW: If this model hit a daily limit earlier in the run, skip it instantly!
-      if (this.exhaustedModels.has(model)) {
-        continue;
-      }
+    for (const modelConfig of MODELS) {
+      if (this.exhaustedModels.has(modelConfig.name)) continue;
 
-      LogService.info(`🧠 Attempting translation with model: ${model}`);
+      LogService.info(`🧠 Attempting translation with model: ${modelConfig.name}`);
       
       const payload = JSON.stringify({
-        model: model, 
+        model: modelConfig.name, 
         messages:[
           { 
             role: "system", 
-            content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang} but keep technical and programming terms in English. 
+            content: `You are a professional translator. Translate 't' (title) and 'd' (description) into ${lang}. 
 CRITICAL INSTRUCTIONS:
 1. The text contains placeholders like [T0]. Preserve them exactly.
 2. Return ONLY a valid JSON object. Do NOT wrap in markdown.
@@ -186,7 +183,8 @@ CRITICAL INSTRUCTIONS:
           { role: "user", content: JSON.stringify(cleanedItems) }
         ],
         temperature: 0.1,
-        max_tokens: 3500 
+        // DYNAMIC FIX: Use model-specific token requests to prevent 413 payload breaches
+        max_tokens: modelConfig.tokens 
       });
 
       let delay = 2000; 
@@ -217,17 +215,15 @@ CRITICAL INSTRUCTIONS:
         
         if (status === 429 || status === 498) {
           const errText = await res.text();
-          
           if (errText.includes("tokens per day (TPD)")) {
-            LogService.warn(`🛑 Daily Limit hit for ${model}. Blacklisting model for this session...`);
-            this.exhaustedModels.add(model); // Blacklist it so we don't try it on the next batch!
+            LogService.warn(`🛑 Daily Limit hit for ${modelConfig.name}. Blacklisting for this session...`);
+            this.exhaustedModels.add(modelConfig.name); 
             modelExhausted = true;
             break; 
           }
           
           LogService.warn(`⚠️ API Rate Limit (${status}): ${errText}`);
           if (attempt === 3) { modelExhausted = true; break; }
-          
           LogService.warn(`⚠️ Sleeping 60 seconds to refill token bucket...`);
           await LogService.save(env); 
           await new Promise(resolve => setTimeout(resolve, 60000));
@@ -378,22 +374,33 @@ const RSSService = {
       const mapKey = `map:${config.name}`;
       translatedMap = await env.FEED_METADATA.get(mapKey, "json") || {};
 
-      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
       const now = Date.now();
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
       let didPruneOldData = false;
+
       for (const [key, value] of Object.entries(translatedMap)) {
+        // Garbage collect data older than 30 days
         if (value._ts && (now - value._ts > THIRTY_DAYS_MS)) {
+          delete translatedMap[key];
+          didPruneOldData = true;
+        }
+        // NEW: If an item has been marked 'failed: true' for over 3 days, delete it entirely.
+        // It is considered "impossible" and we will stop wasting tokens trying to translate it.
+        else if (value.failed && value._failedAt && (now - value._failedAt > THREE_DAYS_MS)) {
           delete translatedMap[key];
           didPruneOldData = true;
         }
       }
       if (didPruneOldData) {
-        LogService.info(`🧹 [${config.name}] Swept old items (> 30 days) from database.`);
+        LogService.info(`🧹 [${config.name}] Swept old/impossible items from database.`);
       }
 
-      let untranslated = items.filter(it => !translatedMap[it.id]);
+      // Filter out items that are already translated, or items that are currently in the 3-day failure timeout
+      let untranslated = items.filter(it => !translatedMap[it.id] || (translatedMap[it.id].failed === true && !translatedMap[it.id]._failedAt));
       
-      const initialItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
+      // EXCLUSION FIX: Generate the initial cached feed, but strictly OMIT any items that haven't been translated yet.
+      const initialItems = items.slice(0, 15).filter(it => translatedMap[it.id] && !translatedMap[it.id].failed).map(it => translatedMap[it.id]);
       await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(initialItems, config), { expirationTtl: 2592000 }); 
 
       if (untranslated.length === 0) {
@@ -401,9 +408,8 @@ const RSSService = {
         return true;
       }
 
-      let currentMaxBatchChars = 2000; 
+      let currentMaxBatchChars = 1800; // Smallest safe chunk
 
-      // 100% FULL SPEED QUEUE DRAIN
       while (untranslated.length > 0) {
         const toTranslate = [];
         let currentCharCount = 0;
@@ -431,7 +437,7 @@ const RSSService = {
             
             if (translated && translated.length > 0) {
               translated.forEach(it => { translatedMap[it.id] = { ...it, _ts: Date.now() }; });
-              currentMaxBatchChars = 2000; 
+              currentMaxBatchChars = 1800; 
               
               const processedIds = new Set(Object.keys(translatedMap));
               untranslated = untranslated.filter(it => !processedIds.has(it.id));
@@ -440,7 +446,8 @@ const RSSService = {
               items.forEach(it => { if (translatedMap[it.id]) prunedMap[it.id] = translatedMap[it.id]; });
               await env.FEED_METADATA.put(mapKey, JSON.stringify(prunedMap), { expirationTtl: 2592000 });
 
-              const interimItems = items.slice(0, 15).map(it => (translatedMap[it.id] && !translatedMap[it.id].failed) ? translatedMap[it.id] : it);
+              // EXCLUSION FIX: Again, strictly filter out untranslated items before caching
+              const interimItems = items.slice(0, 15).filter(it => translatedMap[it.id] && !translatedMap[it.id].failed).map(it => translatedMap[it.id]);
               await env.RSS_CACHE.put(`feed:${config.name}`, this.generate(interimItems, config), { expirationTtl: 2592000 });
               LogService.info(`💾 [${config.name}] Incremental cache updated.`);
               
@@ -459,8 +466,9 @@ const RSSService = {
               currentMaxBatchChars = Math.floor(currentMaxBatchChars / 2);
               
               if (toTranslate.length === 1) {
-                LogService.error(`❌ [${config.name}] Item too large. Marking as failed.`);
-                translatedMap[toTranslate[0].id] = { failed: true, ...toTranslate[0], _ts: Date.now() };
+                LogService.error(`❌ [${config.name}] Item too large/complex for all models. Putting in 3-day penalty box.`);
+                // NEW: Mark as failed AND add a timestamp so we don't try it again for 3 days
+                translatedMap[toTranslate[0].id] = { failed: true, _failedAt: Date.now(), ...toTranslate[0] };
                 untranslated = untranslated.filter(it => it.id !== toTranslate[0].id);
                 await env.FEED_METADATA.put(mapKey, JSON.stringify(translatedMap), { expirationTtl: 2592000 });
               }
@@ -475,8 +483,6 @@ const RSSService = {
           hitFatalLimit = true;
           break;
         }
-
-        // DELIBERATELY DELETED: The 20-second sleep is officially GONE. Full speed ahead!
       }
     } catch (e) {
       Utils.logError(`processFeed:${config.name}`, e);
